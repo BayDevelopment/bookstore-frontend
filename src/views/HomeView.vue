@@ -1,19 +1,27 @@
 <script setup>
-import {
-  Cog6ToothIcon,
-  ScaleIcon,
-  ChartBarIcon,
-  AcademicCapIcon,
-  BookOpenIcon,
-  RocketLaunchIcon,
-} from '@heroicons/vue/24/outline'
+import { ref, onMounted } from 'vue'
+import * as HeroIcons from '@heroicons/vue/24/outline'
+import { BookOpenIcon, RocketLaunchIcon, AcademicCapIcon } from '@heroicons/vue/24/outline'
+import axios from 'axios'
 
-const fakultasList = [
-  { name: 'Teknik', icon: Cog6ToothIcon },
-  { name: 'Hukum', icon: ScaleIcon },
-  { name: 'Ekonomi', icon: ChartBarIcon },
-  { name: 'FKIP', icon: AcademicCapIcon },
-]
+const categories = ref([])
+const loading = ref(true)
+
+const resolveIcon = (iconName) => {
+  if (!iconName) return HeroIcons['BookOpenIcon']
+  return HeroIcons[iconName] ?? HeroIcons['BookOpenIcon']
+}
+
+onMounted(async () => {
+  try {
+    const response = await axios.get('http://127.0.0.1:8000/api/categories')
+    categories.value = response.data
+  } catch (e) {
+    // silent error
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
@@ -34,7 +42,6 @@ const fakultasList = [
           </p>
 
           <div class="flex gap-4 flex-wrap">
-            <!-- Jelajahi Buku -->
             <router-link
               to="/books"
               class="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-full shadow hover:shadow-lg hover:bg-blue-700 transition-all duration-200"
@@ -43,7 +50,6 @@ const fakultasList = [
               <span>Jelajahi Buku</span>
             </router-link>
 
-            <!-- Mulai Sekarang -->
             <router-link
               to="/register"
               class="inline-flex items-center gap-2 border border-gray-300 px-6 py-3 rounded-full text-gray-700 hover:border-blue-600 hover:text-blue-600 hover:shadow-sm transition-all duration-200"
@@ -56,10 +62,7 @@ const fakultasList = [
 
         <!-- RIGHT -->
         <div class="flex justify-center relative">
-          <!-- Glow -->
           <div class="absolute w-[300px] h-[300px] bg-blue-400/20 rounded-full blur-3xl"></div>
-
-          <!-- ICON -->
           <AcademicCapIcon
             class="relative z-10 w-28 h-28 md:w-36 md:h-36 text-blue-600 animate-float"
           />
@@ -82,34 +85,45 @@ const fakultasList = [
           <p class="text-gray-500">Pilih kategori sesuai bidangmu untuk menemukan buku terbaik</p>
         </div>
 
+        <!-- LOADING -->
+        <div v-if="loading" class="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div v-for="n in 8" :key="n" class="bg-gray-100 rounded-2xl p-6 h-36 animate-pulse" />
+        </div>
+
+        <!-- KOSONG -->
+        <div
+          v-else-if="categories.length === 0"
+          class="flex flex-col items-center justify-center py-20 text-gray-400"
+        >
+          <component :is="HeroIcons['InboxIcon']" class="w-16 h-16 mb-4 text-gray-300" />
+          <p class="text-lg font-medium text-gray-400">Belum ada kategori</p>
+          <p class="text-sm text-gray-300 mt-1">Kategori akan muncul di sini setelah ditambahkan</p>
+        </div>
+
         <!-- GRID -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div
-            v-for="fakultas in fakultasList"
-            :key="fakultas.name"
+            v-for="category in categories"
+            :key="category.id"
             class="group relative bg-white rounded-2xl p-6 text-center border border-gray-100 hover:border-blue-200 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer hover:-translate-y-2 overflow-hidden"
           >
-            <!-- glow -->
             <div
               class="absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-300 bg-gradient-to-br from-blue-500/10 via-transparent to-blue-300/10"
             ></div>
 
-            <!-- ICON -->
             <div
               class="relative w-14 h-14 mx-auto flex items-center justify-center rounded-xl bg-blue-50 mb-4 group-hover:bg-blue-600 transition-all duration-300"
             >
               <component
-                :is="fakultas.icon"
+                :is="resolveIcon(category.icon)"
                 class="w-6 h-6 text-blue-600 group-hover:text-white transition-all duration-300 group-hover:scale-110"
               />
             </div>
 
-            <!-- TITLE -->
             <p class="relative font-semibold text-gray-700 group-hover:text-blue-600 transition">
-              {{ fakultas.name }}
+              {{ category.name }}
             </p>
 
-            <!-- CTA -->
             <div class="mt-3 text-xs text-gray-400 group-hover:text-blue-500 transition">
               Lihat →
             </div>
@@ -126,11 +140,9 @@ const fakultasList = [
         <h3 class="text-xl font-semibold text-gray-800 mb-3">
           Tidak menemukan buku yang kamu cari?
         </h3>
-
         <p class="text-gray-500 mb-6">
           Gunakan fitur pencarian atau jelajahi semua koleksi buku kami.
         </p>
-
         <router-link
           to="/books"
           class="bg-blue-600 text-white px-6 py-3 rounded-full hover:bg-blue-700 hover:shadow-lg transition"
@@ -143,7 +155,6 @@ const fakultasList = [
 </template>
 
 <style scoped>
-/* GRID SHIMMER */
 .grid-wave {
   position: absolute;
   inset: 0;
@@ -178,7 +189,6 @@ const fakultasList = [
   }
 }
 
-/* FLOAT */
 @keyframes float {
   0%,
   100% {
@@ -188,6 +198,7 @@ const fakultasList = [
     transform: translateY(-12px);
   }
 }
+
 .animate-float {
   animation: float 4s ease-in-out infinite;
 }

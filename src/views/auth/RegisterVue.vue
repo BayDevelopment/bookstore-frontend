@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { useRouter } from 'vue-router'
@@ -7,36 +7,56 @@ import { useRouter } from 'vue-router'
 const loading = ref(false)
 const router = useRouter()
 
+// ─── State Fakultas & Prodi dari DB ─────────────────────────────
+const fakultasList = ref([])
+const prodiList = ref([])
+const loadingReferensi = ref(false)
+
+const prodiTersedia = computed(() =>
+  prodiList.value.filter((p) => p.fakultas_id === form.fakultas_id),
+)
+
+const fetchReferensi = async () => {
+  loadingReferensi.value = true
+  try {
+    const [resFakultas, resProdi] = await Promise.all([
+      axios.get('http://127.0.0.1:8000/api/fakultas'),
+      axios.get('http://127.0.0.1:8000/api/prodi'),
+    ])
+    fakultasList.value = resFakultas.data.data
+    prodiList.value = resProdi.data.data
+  } catch (e) {
+    Swal.fire({
+      icon: 'error',
+      title: 'Gagal memuat data',
+      text: 'Tidak dapat mengambil data fakultas/prodi.',
+      confirmButtonColor: '#2563eb',
+    })
+  } finally {
+    loadingReferensi.value = false
+  }
+}
+
+onMounted(() => fetchReferensi())
+
+// ─── Form ────────────────────────────────────────────────────────
 const form = reactive({
   nim: '',
   name: '',
   email: '',
-  fakultas: '',
-  prodi: '',
+  fakultas_id: '',
+  prodi_id: '',
   password: '',
   password_confirmation: '',
 })
 
 const errors = reactive({})
 
-// Data Fakultas & Prodi — sesuaikan dengan Univ Alkhairiyah
-const fakultasList = ['Teknik', 'Hukum', 'Ekonomi', 'FKIP', 'Kesehatan', 'Pertanian']
-
-const prodiList = {
-  Teknik: ['Teknik Informatika', 'Teknik Sipil', 'Teknik Elektro'],
-  Hukum: ['Ilmu Hukum'],
-  Ekonomi: ['Manajemen', 'Akuntansi'],
-  FKIP: ['Pendidikan Matematika', 'Pendidikan Bahasa Indonesia'],
-  Kesehatan: ['Keperawatan', 'Kebidanan'],
-  Pertanian: ['Agroteknologi'],
-}
-
-const prodiTersedia = computed(() => prodiList[form.fakultas] || [])
-
 const onFakultasChange = () => {
-  form.prodi = ''
+  form.prodi_id = '' // reset prodi saat ganti fakultas
 }
 
+// ─── Validasi ────────────────────────────────────────────────────
 const clearErrors = () => {
   Object.keys(errors).forEach((k) => delete errors[k])
 }
@@ -49,6 +69,7 @@ const validate = () => {
     errors.nim = 'NIM harus angka, minimal 8 digit'
     valid = false
   }
+
   if (!form.name || form.name.length < 3 || form.name.length > 100) {
     errors.name = 'Nama minimal 3 karakter dan maksimal 100 karakter'
     valid = false
@@ -56,18 +77,22 @@ const validate = () => {
     errors.name = 'Nama hanya boleh berisi huruf dan spasi'
     valid = false
   }
+
   if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
     errors.email = 'Format email tidak valid'
     valid = false
   }
-  if (!form.fakultas) {
-    errors.fakultas = 'Fakultas wajib dipilih'
+
+  if (!form.fakultas_id) {
+    errors.fakultas_id = 'Fakultas wajib dipilih'
     valid = false
   }
-  if (!form.prodi) {
-    errors.prodi = 'Program studi wajib dipilih'
+
+  if (!form.prodi_id) {
+    errors.prodi_id = 'Program studi wajib dipilih'
     valid = false
   }
+
   if (!form.password || form.password.length < 8) {
     errors.password = 'Password minimal 8 karakter'
     valid = false
@@ -75,6 +100,7 @@ const validate = () => {
     errors.password = 'Harus ada huruf besar, huruf kecil, angka & simbol (!@#$%^&*)'
     valid = false
   }
+
   if (!form.password_confirmation) {
     errors.password_confirmation = 'Konfirmasi password wajib diisi'
     valid = false
@@ -86,6 +112,7 @@ const validate = () => {
   return valid
 }
 
+// ─── Submit ──────────────────────────────────────────────────────
 const handleRegister = async () => {
   if (!validate()) return
 
@@ -96,8 +123,8 @@ const handleRegister = async () => {
       nim: form.nim,
       name: form.name,
       email: form.email,
-      fakultas: form.fakultas,
-      prodi: form.prodi,
+      fakultas_id: form.fakultas_id,
+      prodi_id: form.prodi_id,
       password: form.password,
       password_confirmation: form.password_confirmation,
     })
@@ -111,7 +138,6 @@ const handleRegister = async () => {
 
     router.push('/login')
   } catch (error) {
-    // Tangkap error validasi dari Laravel (422)
     if (error.response?.status === 422) {
       const serverErrors = error.response.data.errors
       Object.keys(serverErrors).forEach((key) => {
@@ -224,40 +250,33 @@ const handleRegister = async () => {
         </div>
 
         <!-- Fakultas -->
-        <div>
-          <label class="text-sm text-gray-600">Fakultas</label>
-          <div class="relative group mt-1">
-            <span
-              class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition"
-              >🏫</span
-            >
-            <select v-model="form.fakultas" @change="onFakultasChange" class="input-modern pl-10">
-              <option value="" disabled>Pilih Fakultas</option>
-              <option v-for="f in fakultasList" :key="f" :value="f">{{ f }}</option>
-            </select>
-          </div>
-          <p v-if="errors.fakultas" class="text-xs text-red-500 mt-1">{{ errors.fakultas }}</p>
-        </div>
+        <select
+          v-model="form.fakultas_id"
+          @change="onFakultasChange"
+          class="input-modern pl-10"
+          :disabled="loadingReferensi"
+        >
+          <option value="" disabled>
+            {{ loadingReferensi ? 'Memuat...' : 'Pilih Fakultas' }}
+          </option>
+          <option v-for="f in fakultasList" :key="f.id" :value="f.id">
+            {{ f.nama_fakultas }}
+          </option>
+        </select>
+        <p v-if="errors.fakultas_id" class="text-xs text-red-500 mt-1">{{ errors.fakultas_id }}</p>
 
         <!-- Prodi -->
-        <div>
-          <label class="text-sm text-gray-600">Program Studi</label>
-          <div class="relative group mt-1">
-            <span
-              class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition"
-              >📖</span
-            >
-            <select
-              v-model="form.prodi"
-              :disabled="!form.fakultas"
-              class="input-modern pl-10 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <option value="" disabled>Pilih Program Studi</option>
-              <option v-for="p in prodiTersedia" :key="p" :value="p">{{ p }}</option>
-            </select>
-          </div>
-          <p v-if="errors.prodi" class="text-xs text-red-500 mt-1">{{ errors.prodi }}</p>
-        </div>
+        <select
+          v-model="form.prodi_id"
+          :disabled="!form.fakultas_id || loadingReferensi"
+          class="input-modern pl-10 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <option value="" disabled>Pilih Program Studi</option>
+          <option v-for="p in prodiTersedia" :key="p.id" :value="p.id">
+            {{ p.nama_prodi }}
+          </option>
+        </select>
+        <p v-if="errors.prodi_id" class="text-xs text-red-500 mt-1">{{ errors.prodi_id }}</p>
 
         <!-- Password -->
         <div>

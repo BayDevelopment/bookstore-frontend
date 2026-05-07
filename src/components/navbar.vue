@@ -1,12 +1,25 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue' // ← gabung di sini
+import axios from 'axios'
 import logo from '@/assets/images/logo-nav.png'
-
 import { MagnifyingGlassIcon, ShoppingCartIcon, Bars3Icon } from '@heroicons/vue/24/outline'
 
 const isOpen = ref(false)
 const isSearchOpen = ref(false)
 const search = ref('')
+
+const cartCount = ref(0)
+
+const fetchCartCount = async () => {
+  try {
+    const res = await axios.get('http://127.0.0.1:8000/api/cart/count')
+    cartCount.value = res.data.count
+  } catch (e) {
+    cartCount.value = 0
+  }
+}
+
+onMounted(() => fetchCartCount())
 </script>
 
 <template>
@@ -78,11 +91,12 @@ const search = ref('')
               to="/keranjang"
               class="relative text-gray-500 hover:text-blue-600 transition"
             >
-              <ShoppingCartIcon class="w-5 h-5" />
+              <ShoppingCartIcon class="w-6 h-6" />
               <span
+                v-if="cartCount > 0"
                 class="absolute -top-2 -right-2 text-[10px] bg-blue-600 text-white px-1 rounded-full"
               >
-                3
+                {{ cartCount > 99 ? '99+' : cartCount }}
               </span>
             </router-link>
           </div>
