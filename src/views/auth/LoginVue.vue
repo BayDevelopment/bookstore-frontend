@@ -3,21 +3,19 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuth } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const { setAuth } = useAuth()
+
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
 
-// =====================
-// RESEND EMAIL
-// =====================
 const resendEmail = async () => {
   try {
-    await axios.post('http://127.0.0.1:8000/api/email/resend', {
-      email: email.value,
-    })
+    await axios.post('http://127.0.0.1:8000/api/email/resend', { email: email.value })
     Swal.fire({
       icon: 'success',
       title: 'Email Terkirim!',
@@ -43,12 +41,8 @@ const resendEmail = async () => {
   }
 }
 
-// =====================
-// LOGIN
-// =====================
 const handleLogin = async () => {
   if (loading.value) return
-
   loading.value = true
 
   try {
@@ -57,8 +51,7 @@ const handleLogin = async () => {
       password: password.value,
     })
 
-    localStorage.setItem('token', res.data.token)
-    localStorage.setItem('user', JSON.stringify(res.data.user))
+    setAuth(res.data.token, res.data.user) // ← reactive, navbar langsung update
 
     await Swal.fire({
       icon: 'success',
@@ -67,7 +60,7 @@ const handleLogin = async () => {
       showConfirmButton: false,
     })
 
-    router.push('/dashboard') // ← redirect ke dashboard
+    router.push('/')
   } catch (error) {
     if (error.response?.status === 403) {
       Swal.fire({
@@ -108,9 +101,6 @@ const handleLogin = async () => {
   }
 }
 
-// =====================
-// CEK VERIFIKASI EMAIL
-// =====================
 onMounted(() => {
   if (route.query.verified === '1') {
     Swal.fire({
