@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '@/lib/axios'
 import { useAuth } from '@/stores/auth'
 
 const route = useRoute()
@@ -20,9 +20,7 @@ async function fetchOrders() {
   loading.value = true
   error.value = null
   try {
-    const { data } = await axios.get('/api/orders', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const { data } = await api.get('/orders')
     orders.value = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : []
   } catch (e) {
     error.value = 'Gagal memuat pesanan.'
@@ -58,7 +56,6 @@ function coverSrc(cover) {
   return cover.startsWith('http') ? cover : `/storage/${cover}`
 }
 
-// Helper ambil buku pertama dari items
 function getBook(order) {
   return order.items?.[0]?.book ?? null
 }

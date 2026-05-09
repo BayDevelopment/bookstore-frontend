@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '@/lib/axios'
 import Swal from 'sweetalert2'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '@/stores/auth'
@@ -15,7 +15,7 @@ const loading = ref(false)
 
 const resendEmail = async () => {
   try {
-    await axios.post('http://127.0.0.1:8000/api/email/resend', { email: email.value })
+    await api.post('/email/resend', { email: email.value })
     Swal.fire({
       icon: 'success',
       title: 'Email Terkirim!',
@@ -46,7 +46,7 @@ const handleLogin = async () => {
   loading.value = true
 
   try {
-    const res = await axios.post('http://127.0.0.1:8000/api/login', {
+    const res = await api.post('/login', {
       email: email.value,
       password: password.value,
     })
@@ -55,8 +55,12 @@ const handleLogin = async () => {
 
     await Swal.fire({
       icon: 'success',
-      title: 'Login Berhasil! 👋',
-      timer: 1500,
+      title: 'Login Berhasil',
+      text: 'Selamat datang kembali 👋',
+      toast: true,
+      position: 'top-end',
+      timer: 2000,
+      timerProgressBar: true,
       showConfirmButton: false,
     })
 

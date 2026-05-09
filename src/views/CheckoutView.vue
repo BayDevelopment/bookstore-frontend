@@ -1,21 +1,32 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '@/lib/axios'
 
 const route = useRoute()
 const router = useRouter()
 
 const book = ref(null)
+const cartItems = ref([])
 const loading = ref(true)
 const error = ref(null)
 const quantity = ref(1)
 const paymentMethods = ref([])
-const selectedMethod = ref(null) // object PaymentMethod yang dipilih
+const selectedMethod = ref(null)
 const orderLoading = ref(false)
 const orderError = ref(null)
 
 const token = localStorage.getItem('token')
+const isFromCart = computed(() => !route.query.book_id)
+const copied = ref(false)
+
+async function copyNorek() {
+  const norek = selectedMethod.value?.account_number
+  if (!norek) return
+  await navigator.clipboard.writeText(norek)
+  copied.value = true
+  setTimeout(() => (copied.value = false), 2000)
+}
 
 onMounted(async () => {
   if (!token) {
@@ -23,30 +34,37 @@ onMounted(async () => {
     return
   }
 
-  const bookId = route.query.book_id
-  if (!bookId) {
-    router.push('/books')
-    return
-  }
-
   try {
-    const [bookRes, methodRes] = await Promise.all([
-      axios.get(`/api/books/${bookId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      axios
-        .get('/api/payment-methods', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .catch(() => ({ data: { data: [] } })), // ← kalau 404, tidak crash
-    ])
-
-    book.value = bookRes.data.data ?? bookRes.data
-    paymentMethods.value = methodRes.data.data ?? []
-
-    if (paymentMethods.value.length > 0) {
-      selectedMethod.value = paymentMethods.value[0]
+    if (isFromCart.value) {
+      const [cartRes, methodRes] = await Promise.all([
+        api.get('/cart'),
+        api.get('/payment-methods').catch(() => ({ data: { data: [] } })),
+      ])
+      cartItems.value = cartRes.data.data.map((item) => ({
+        cartId: item.id,
+        book_id: item.book_id,
+        title: item.book.title,
+        author: item.book.author,
+        price: Number(item.book.price),
+        qty: item.qty,
+        stock: item.book.stock,
+        image: item.book.cover?.startsWith('http')
+          ? item.book.cover
+          : item.book.cover
+            ? `/storage/${item.book.cover}`
+            : null,
+      }))
+      paymentMethods.value = methodRes.data.data ?? []
+    } else {
+      const [bookRes, methodRes] = await Promise.all([
+        api.get(`/books/${route.query.book_id}`),
+        api.get('/payment-methods').catch(() => ({ data: { data: [] } })),
+      ])
+      book.value = bookRes.data.data ?? bookRes.data
+      paymentMethods.value = methodRes.data.data ?? []
     }
+
+    if (paymentMethods.value.length > 0) selectedMethod.value = paymentMethods.value[0]
   } catch (e) {
     error.value = 'Gagal memuat data.'
   } finally {
@@ -61,7 +79,14 @@ const coverSrc = computed(() => {
 })
 
 const maxQty = computed(() => Math.min(book.value?.stock ?? 1, 10))
-const totalPrice = computed(() => Number(book.value?.price ?? 0) * quantity.value)
+
+const totalPrice = computed(() => {
+  if (isFromCart.value) {
+    return cartItems.value.reduce((sum, item) => sum + item.price * item.qty, 0)
+  }
+  return Number(book.value?.price ?? 0) * quantity.value
+})
+
 const formattedTotal = computed(() => totalPrice.value.toLocaleString('id-ID'))
 const isCash = computed(() => selectedMethod.value?.code === 'cash')
 
@@ -77,28 +102,29 @@ async function handleOrder() {
     orderError.value = 'Pilih metode pembayaran terlebih dahulu.'
     return
   }
-
   orderLoading.value = true
   orderError.value = null
 
   try {
-    const { data } = await axios.post(
-      '/api/orders',
-      {
-        book_id: book.value.id,
-        quantity: quantity.value,
-        payment_method_id: selectedMethod.value.id, // ← ID dari tabel payment_methods
-      },
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
+    const payload = isFromCart.value
+      ? {
+          items: cartItems.value.map((i) => ({ book_id: i.book_id, quantity: i.qty })),
+          payment_method_id: selectedMethod.value.id,
+          from_cart: true,
+        }
+      : {
+          items: [{ book_id: book.value.id, quantity: quantity.value }],
+          payment_method_id: selectedMethod.value.id,
+        }
 
+    const { data } = await api.post('/orders', payload)
     const orderId = data.data?.id ?? null
 
+    if (isFromCart.value) window.dispatchEvent(new Event('cart-updated'))
+
     if (isCash.value) {
-      // Cash → langsung ke detail
       router.push(orderId ? `/orders/${orderId}` : '/orders')
     } else {
-      // Transfer → ke list pesanan + notif baru
       router.push({ path: '/orders', query: { new: orderId } })
     }
   } catch (e) {
@@ -153,9 +179,35 @@ async function handleOrder() {
         </button>
       </div>
 
-      <template v-else-if="book">
-        <!-- CARD BUKU -->
+      <template v-else>
+        <!-- CARD BUKU — dari keranjang -->
         <div
+          v-if="isFromCart"
+          class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4"
+        >
+          <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+            Buku yang Dipesan
+          </h2>
+          <div class="space-y-3">
+            <div v-for="item in cartItems" :key="item.cartId" class="flex gap-3 items-center">
+              <div class="w-12 h-16 rounded-lg overflow-hidden bg-gray-100 shrink-0">
+                <img v-if="item.image" :src="item.image" class="w-full h-full object-cover" />
+                <div v-else class="w-full h-full flex items-center justify-center text-xl">📚</div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="font-semibold text-sm text-gray-800 truncate">{{ item.title }}</p>
+                <p class="text-xs text-gray-400">{{ item.author }}</p>
+                <p class="text-blue-600 text-sm font-semibold">
+                  Rp {{ item.price.toLocaleString('id-ID') }} × {{ item.qty }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CARD BUKU — beli langsung -->
+        <div
+          v-else
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4"
         >
           <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
@@ -177,8 +229,9 @@ async function handleOrder() {
           </div>
         </div>
 
-        <!-- JUMLAH BUKU -->
+        <!-- JUMLAH BUKU — hanya untuk beli langsung -->
         <div
+          v-if="!isFromCart"
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4"
         >
           <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
@@ -200,22 +253,20 @@ async function handleOrder() {
             >
               +
             </button>
-            <span class="text-xs text-gray-400 ml-2">Stok tersedia: {{ book.stock }}</span>
+            <span class="text-xs text-gray-400 ml-2">Stok tersedia: {{ book?.stock }}</span>
           </div>
         </div>
 
-        <!-- METODE PEMBAYARAN — dari API -->
+        <!-- METODE PEMBAYARAN -->
         <div
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4"
         >
           <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
             Metode Pembayaran
           </h2>
-
           <div v-if="paymentMethods.length === 0" class="text-sm text-gray-400 text-center py-4">
             Tidak ada metode pembayaran tersedia.
           </div>
-
           <div class="space-y-3">
             <label
               v-for="method in paymentMethods"
@@ -236,8 +287,6 @@ async function handleOrder() {
                 v-model="selectedMethod"
                 class="hidden"
               />
-
-              <!-- Radio indicator -->
               <div
                 :class="[
                   'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
@@ -256,7 +305,6 @@ async function handleOrder() {
                   ]"
                 ></div>
               </div>
-
               <div class="flex-1">
                 <p class="font-semibold text-sm text-gray-800">
                   {{ method.code === 'cash' ? '💵' : '🏦' }} {{ method.name }}
@@ -266,6 +314,46 @@ async function handleOrder() {
             </label>
           </div>
         </div>
+        <!-- Detail Rekening Bank (muncul jika bukan cash) -->
+        <transition name="slide-fade">
+          <div
+            v-if="selectedMethod && selectedMethod.code !== 'cash'"
+            class="mt-4 mb-6 p-4 rounded-xl bg-blue-50 border border-blue-100"
+          >
+            <p class="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-3">
+              🏦 Detail Rekening Tujuan
+            </p>
+            <div class="space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-gray-500">Bank</span>
+                <span class="text-sm font-semibold text-gray-800">
+                  {{ selectedMethod.bank_name ?? selectedMethod.name }}
+                </span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-gray-500">Atas Nama</span>
+                <span class="text-sm font-semibold text-gray-800">
+                  {{ selectedMethod.account_name ?? '-' }}
+                </span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-gray-500">No. Rekening</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-bold text-blue-700 tracking-wider font-mono">
+                    {{ selectedMethod.account_number ?? '-' }}
+                  </span>
+                  <button
+                    v-if="selectedMethod.account_number"
+                    @click="copyNorek"
+                    class="text-xs px-2 py-0.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-md transition-colors"
+                  >
+                    {{ copied ? '✓ Disalin' : 'Salin' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
 
         <!-- RINGKASAN & CTA -->
         <div class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -273,13 +361,19 @@ async function handleOrder() {
             Ringkasan
           </h2>
           <div class="space-y-2 mb-4">
-            <div class="flex justify-between text-sm">
+            <div v-if="!isFromCart" class="flex justify-between text-sm">
               <span class="text-gray-500">Harga satuan</span>
-              <span class="text-gray-700">Rp {{ Number(book.price).toLocaleString('id-ID') }}</span>
+              <span class="text-gray-700"
+                >Rp {{ Number(book?.price).toLocaleString('id-ID') }}</span
+              >
             </div>
-            <div class="flex justify-between text-sm">
+            <div v-if="!isFromCart" class="flex justify-between text-sm">
               <span class="text-gray-500">Jumlah</span>
               <span class="text-gray-700">{{ quantity }} buku</span>
+            </div>
+            <div v-if="isFromCart" class="flex justify-between text-sm">
+              <span class="text-gray-500">Total item</span>
+              <span class="text-gray-700">{{ cartItems.length }} buku</span>
             </div>
             <div class="flex justify-between text-sm">
               <span class="text-gray-500">Metode</span>
@@ -348,5 +442,17 @@ async function handleOrder() {
   100% {
     background-position: -200% 0;
   }
+}
+
+.slide-fade-enter-active {
+  transition: all 0.25s ease;
+}
+.slide-fade-leave-active {
+  transition: all 0.2s ease;
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 </style>

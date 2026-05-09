@@ -40,6 +40,8 @@ const router = createRouter({
       name: 'verify-email',
       component: () => import('@/views/auth/VerifyEmailView.vue'),
     },
+    { path: '/forgot-password', component: () => import('@/views/auth/ForgotPasswordView.vue') },
+    { path: '/reset-password', component: () => import('@/views/auth/ResetPasswordView.vue') },
     {
       path: '/dashboard',
       name: 'dashboard',
@@ -65,6 +67,11 @@ const router = createRouter({
     {
       path: '/checkout',
       component: () => import('@/views/CheckoutView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/profile',
+      component: () => import('@/views/ProfileView.vue'),
       meta: { requiresAuth: true },
     },
   ],

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '@/lib/axios'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,14 +18,21 @@ const uploadError = ref(null)
 const uploadSuccess = ref(false)
 
 const token = localStorage.getItem('token')
+const copied = ref(false)
+
+async function copyNorek() {
+  const norek = order.value?.payment_method?.account_number
+  if (!norek) return
+  await navigator.clipboard.writeText(norek)
+  copied.value = true
+  setTimeout(() => (copied.value = false), 2000)
+}
 
 async function fetchOrder() {
   loading.value = true
   error.value = null
   try {
-    const { data } = await axios.get(`/api/orders/${route.params.id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const { data } = await api.get(`/orders/${route.params.id}`)
     order.value = data.data ?? data
   } catch (e) {
     error.value = 'Gagal memuat detail pesanan.'
@@ -42,8 +49,6 @@ onMounted(() => {
   fetchOrder()
 })
 
-// ── proof_status: not_uploaded | uploaded | verified | invalid ──────────
-// ── status      : pending | confirmed | rejected ────────────────────────
 const proofStatus = computed(() => order.value?.proof_status ?? 'not_uploaded')
 const orderStatus = computed(() => order.value?.status ?? 'pending')
 
@@ -123,8 +128,8 @@ async function uploadBukti() {
   const formData = new FormData()
   formData.append('payment_proof', selectedFile.value)
   try {
-    await axios.post(`/api/orders/${order.value.id}/payment`, formData, {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+    await api.post(`/orders/${order.value.id}/payment`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
     uploadSuccess.value = true
     selectedFile.value = null
@@ -367,6 +372,55 @@ function formatDate(d) {
               <span class="text-blue-600"
                 >Rp {{ Number(order.total ?? 0).toLocaleString('id-ID') }}</span
               >
+            </div>
+          </div>
+        </div>
+
+        <!-- Detail Rekening Bank -->
+        <div
+          v-if="isNotUploaded && order?.payment_method?.code !== 'cash'"
+          class="bg-white/80 backdrop-blur-md rounded-2xl border border-blue-100 shadow-sm p-5 mb-4"
+        >
+          <div class="flex items-center gap-2 mb-4">
+            <span class="text-xl">🏦</span>
+            <div>
+              <h2 class="text-sm font-bold text-gray-800">Transfer ke Rekening Berikut</h2>
+              <p class="text-xs text-gray-500">Selesaikan pembayaran sebelum upload bukti</p>
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <!-- Nama Bank -->
+            <div class="flex justify-between items-center py-2 border-b border-gray-100">
+              <span class="text-xs text-gray-400">Bank</span>
+              <span class="text-sm font-semibold text-gray-800">
+                {{ order.payment_method.bank_name ?? order.payment_method.name }}
+              </span>
+            </div>
+
+            <!-- Atas Nama -->
+            <div class="flex justify-between items-center py-2 border-b border-gray-100">
+              <span class="text-xs text-gray-400">Atas Nama</span>
+              <span class="text-sm font-semibold text-gray-800">
+                {{ order.payment_method.account_name ?? '-' }}
+              </span>
+            </div>
+
+            <!-- Nomor Rekening -->
+            <div class="flex justify-between items-center py-2 border-b border-gray-100">
+              <span class="text-xs text-gray-400">No. Rekening</span>
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-blue-700 tracking-wider font-mono">
+                  {{ order.payment_method.account_number ?? '-' }}
+                </span>
+                <button
+                  v-if="order.payment_method.account_number"
+                  @click="copyNorek"
+                  class="text-xs px-2 py-0.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-md transition-colors"
+                >
+                  {{ copied ? '✓ Disalin' : 'Salin' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>

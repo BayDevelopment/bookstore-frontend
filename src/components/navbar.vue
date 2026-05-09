@@ -17,8 +17,8 @@ const { isLoggedIn, user, clearAuth } = useAuth()
 
 const isOpen = ref(false)
 const isSearchOpen = ref(false)
-const isProfileOpen = ref(false) // desktop dropdown
-const isMobileProfileOpen = ref(false) // mobile dropdown — terpisah
+const isProfileOpen = ref(false)
+const isMobileProfileOpen = ref(false)
 const search = ref('')
 const cartCount = ref(0)
 
@@ -27,24 +27,25 @@ const userInitial = computed(() => {
 })
 
 const fetchCartCount = async () => {
-  if (!isLoggedIn.value) return
+  if (!isLoggedIn.value) {
+    cartCount.value = 0
+    return
+  }
   try {
-    const res = await axios.get('http://127.0.0.1:8000/api/cart/count', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-    })
-    cartCount.value = res.data.count
-  } catch (e) {
+    const { data } = await axios.get('/api/cart/count')
+    cartCount.value = data.count ?? 0
+  } catch {
     cartCount.value = 0
   }
 }
 
+function onCartUpdated() {
+  fetchCartCount()
+}
+
 const handleLogout = async () => {
   try {
-    await axios.post(
-      'http://127.0.0.1:8000/api/logout',
-      {},
-      { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } },
-    )
+    await axios.post('/api/logout') // ✅ pakai axios global, tidak perlu hardcode URL + header manual
   } catch (e) {
   } finally {
     clearAuth()
@@ -69,13 +70,17 @@ function handleSearch() {
   router.push({ path: '/books', query: { q: search.value.trim() } })
   search.value = ''
 }
+
+// ✅ Satu onMounted dan onUnmounted saja
 onMounted(() => {
   fetchCartCount()
   document.addEventListener('click', closeProfile)
+  window.addEventListener('cart-updated', onCartUpdated)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeProfile)
+  window.removeEventListener('cart-updated', onCartUpdated)
 })
 </script>
 
@@ -206,7 +211,7 @@ onUnmounted(() => {
 
               <!-- Menu -->
               <router-link
-                to="/profil"
+                to="/profile"
                 @click="isProfileOpen = false"
                 class="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition"
               >

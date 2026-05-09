@@ -1,28 +1,25 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import axios from 'axios'
+import api from '@/lib/axios'
 import Swal from 'sweetalert2'
 import { useRouter } from 'vue-router'
 
 const loading = ref(false)
 const router = useRouter()
 
-// ─── State Fakultas & Prodi dari DB ─────────────────────────────
+// ─── Fakultas & Prodi ────────────────────────────────────────────
 const fakultasList = ref([])
 const prodiList = ref([])
 const loadingReferensi = ref(false)
 
-const prodiTersedia = computed(() =>
-  prodiList.value.filter((p) => p.fakultas_id === form.fakultas_id),
+const prodiTersedia = computed(
+  () => prodiList.value.filter((p) => p.fakultas_id == form.fakultas_id), // ✅ == bukan ===
 )
 
 const fetchReferensi = async () => {
   loadingReferensi.value = true
   try {
-    const [resFakultas, resProdi] = await Promise.all([
-      axios.get('http://127.0.0.1:8000/api/fakultas'),
-      axios.get('http://127.0.0.1:8000/api/prodi'),
-    ])
+    const [resFakultas, resProdi] = await Promise.all([api.get('/fakultas'), api.get('/prodi')])
     fakultasList.value = resFakultas.data.data
     prodiList.value = resProdi.data.data
   } catch (e) {
@@ -117,9 +114,8 @@ const handleRegister = async () => {
   if (!validate()) return
 
   loading.value = true
-
   try {
-    await axios.post('http://127.0.0.1:8000/api/register', {
+    await api.post('/register', {
       nim: form.nim,
       name: form.name,
       email: form.email,
@@ -129,14 +125,16 @@ const handleRegister = async () => {
       password_confirmation: form.password_confirmation,
     })
 
+    localStorage.setItem('temp_email', form.email) // ✅ simpan email
+
     await Swal.fire({
       icon: 'success',
       title: 'Registrasi Berhasil! 🎉',
-      text: 'Akun kamu sudah dibuat, silakan login.',
+      text: 'Silakan cek email kamu untuk verifikasi akun.',
       confirmButtonColor: '#2563eb',
     })
 
-    router.push('/login')
+    router.push('/verify-email') // ✅ arahkan ke verify
   } catch (error) {
     if (error.response?.status === 422) {
       const serverErrors = error.response.data.errors

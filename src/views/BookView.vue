@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import axios from 'axios'
+import api from '@/lib/axios'
 import logo from '@/assets/images/logo-nav.png'
 
 const route = useRoute()
@@ -12,6 +12,7 @@ const page = ref(1)
 const lastPage = ref(1)
 const loading = ref(false)
 const firstLoad = ref(true)
+const selectedCategory = ref(route.query.category || null)
 
 const sentinelEl = ref(null)
 let observer = null
@@ -24,13 +25,13 @@ async function fetchBooks(reset = false) {
   loading.value = true
 
   try {
-    const { data } = await axios.get('/api/books', {
+    const { data } = await api.get('/books', {
       params: {
         page: reset ? 1 : page.value,
         per_page: 12,
         search: search.value || undefined,
+        category_id: selectedCategory.value || undefined,
       },
-      headers: { 'Cache-Control': 'no-cache' },
     })
 
     const items = Array.isArray(data.data) ? data.data : []
@@ -71,19 +72,21 @@ function setupObserver() {
   if (sentinelEl.value) observer.observe(sentinelEl.value)
 }
 
-// Watch search input lokal (ketik di BookView)
+function resetAndFetch() {
+  firstLoad.value = true
+  books.value = []
+  page.value = 1
+  lastPage.value = 1
+  fetchBooks(true)
+}
+
 watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
-    firstLoad.value = true
-    books.value = []
-    page.value = 1
-    lastPage.value = 1
-    fetchBooks(true)
+    resetAndFetch()
   }, 500)
 })
 
-// Watch query URL — kalau search dari navbar saat sudah di /books
 watch(
   () => route.query.q,
   (newQ) => {
@@ -94,11 +97,17 @@ watch(
   },
 )
 
+watch(
+  () => route.query.category,
+  (newVal) => {
+    selectedCategory.value = newVal || null
+    resetAndFetch()
+  },
+)
+
 onMounted(async () => {
-  // Baca ?q= dari navbar search
-  if (route.query.q) {
-    search.value = route.query.q
-  }
+  if (route.query.q) search.value = route.query.q
+  if (route.query.category) selectedCategory.value = route.query.category
 
   await fetchBooks(true)
   await nextTick()

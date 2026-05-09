@@ -41,13 +41,16 @@ import logo from '@/assets/images/logo-nav.png'
       <div>
         <h3 class="font-semibold text-gray-700 mb-3">Kontak</h3>
         <p class="text-sm text-gray-500">📧 support@alkhairiyah.ac.id</p>
-        <p class="text-sm text-gray-500 mt-1">📱 +62 812 3456 7890</p>
+        <p class="text-sm text-gray-500 mt-1">📱 +62 813 9975 8951</p>
       </div>
     </div>
 
     <!-- Bottom -->
-    <div class="relative border-t border-gray-100 text-center py-4 text-sm text-gray-400">
-      © 2026 Bookstore Alkhairiyah. All rights reserved.
+    <div
+      class="relative border-t border-gray-100 py-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-1 text-sm text-gray-400"
+    >
+      <span>© 2026 Bookstore Alkhairiyah. All rights reserved.</span>
+      <span>Developed by Bayu Albar Ladici</span>
     </div>
   </footer>
 </template>

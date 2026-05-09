@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 const TOKEN_KEY = 'token'
 const USER_KEY = 'user'
 const LAST_ACTIVITY_KEY = 'last_activity'
-const INACTIVITY_LIMIT = 5 * 60 * 60 * 1000
+const INACTIVITY_LIMIT = 5 * 60 * 60 * 1000 // 5 jam dalam ms
 
 const token = ref(localStorage.getItem(TOKEN_KEY))
 const userData = ref(JSON.parse(localStorage.getItem(USER_KEY) || 'null'))
@@ -18,10 +18,13 @@ export const useAuth = () => {
 
   const isSessionExpired = () => {
     const lastActivity = localStorage.getItem(LAST_ACTIVITY_KEY)
+
+    // ✅ Kalau tidak ada last_activity tapi token ada, anggap baru login
     if (!lastActivity) {
       localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString())
       return false
     }
+
     return Date.now() - parseInt(lastActivity) > INACTIVITY_LIMIT
   }
 
@@ -70,43 +73,22 @@ export const useAuth = () => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     localStorage.removeItem(LAST_ACTIVITY_KEY)
-    localStorage.removeItem('temp_email') // ✅ bersihkan email register
-    localStorage.removeItem('fakultas_list') // ✅ bersihkan cache
-    localStorage.removeItem('prodi_list') // ✅ bersihkan cache
 
     stopActivityListeners()
     clearInterval(inactivityTimer)
   }
 
   const initAuth = () => {
-    const storedToken = localStorage.getItem(TOKEN_KEY)
-    if (!storedToken) return
-
-    // ✅ Load userData dari localStorage saat init
-    const storedUser = JSON.parse(localStorage.getItem(USER_KEY) || 'null')
-    if (!storedUser) {
-      clearAuth()
-      return
+    if (token.value) {
+      if (isSessionExpired()) {
+        clearAuth()
+        window.location.href = '/login?reason=timeout'
+      } else {
+        startActivityListeners()
+        startInactivityWatcher()
+      }
     }
-
-    token.value = storedToken
-    userData.value = storedUser // ✅ pastikan userData ter-load
-
-    if (isSessionExpired()) {
-      clearAuth()
-      window.location.href = '/login?reason=timeout'
-      return
-    }
-
-    startActivityListeners()
-    startInactivityWatcher()
   }
 
-  // ✅ Update userData di localStorage (misal setelah update profil)
-  const updateUser = (newUser) => {
-    userData.value = { ...userData.value, ...newUser }
-    localStorage.setItem(USER_KEY, JSON.stringify(userData.value))
-  }
-
-  return { isLoggedIn, user, setAuth, clearAuth, initAuth, updateUser }
+  return { isLoggedIn, user, setAuth, clearAuth, initAuth }
 }

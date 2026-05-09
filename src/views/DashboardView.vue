@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '@/lib/axios'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -8,8 +8,6 @@ const user = ref(null)
 const stats = ref({ total_books: 0, total_cart: 0, total_orders: 0 })
 const recentOrders = ref([])
 const loading = ref(true)
-
-const token = localStorage.getItem('token')
 
 const statusMap = {
   pending: { label: 'Menunggu Pembayaran', cls: 'bg-yellow-100 text-yellow-700', icon: '⏳' },
@@ -40,9 +38,7 @@ onMounted(async () => {
   if (data) user.value = JSON.parse(data)
 
   try {
-    const { data: res } = await axios.get('/api/dashboard', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const { data: res } = await api.get('/dashboard')
     stats.value = res.data
     recentOrders.value = res.data.recent_orders ?? []
   } catch (e) {

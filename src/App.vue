@@ -1,6 +1,14 @@
 <script setup>
 import NavBar from '@/components/navbar.vue'
 import Footer from '@/components/footer.vue'
+import { useAuth } from '@/stores/auth' // ✅ satu import saja
+import { onMounted } from 'vue'
+
+const { initAuth } = useAuth()
+
+onMounted(() => {
+  initAuth()
+})
 </script>
 
 <template>
@@ -12,5 +20,3 @@ import Footer from '@/components/footer.vue'
     <Footer />
   </div>
 </template>
-
-<style scoped></style>

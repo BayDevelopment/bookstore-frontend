@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '@/lib/axios'
+import Swal from 'sweetalert2'
 
 const route = useRoute()
 const router = useRouter()
@@ -10,6 +11,7 @@ const book = ref(null)
 const loading = ref(true)
 const error = ref(null)
 const showLoginAlert = ref(false)
+const addedToCart = ref(false)
 
 const isLoggedIn = computed(() => !!localStorage.getItem('token'))
 
@@ -17,7 +19,7 @@ async function fetchDetail() {
   loading.value = true
   error.value = null
   try {
-    const { data } = await axios.get(`/api/books/${route.params.id}`)
+    const { data } = await api.get(`/books/${route.params.id}`)
     book.value = data.data ?? data
   } catch (e) {
     error.value = e.response?.status === 404 ? 'Buku tidak ditemukan.' : 'Gagal memuat data.'
@@ -26,7 +28,55 @@ async function fetchDetail() {
   }
 }
 
-onMounted(fetchDetail)
+async function handleKeranjang() {
+  if (!isLoggedIn.value) {
+    showLoginAlert.value = true
+    return
+  }
+  try {
+    await api.post('/cart', { book_id: book.value.id, quantity: 1 })
+    Swal.fire({
+      icon: 'success',
+      title: 'Berhasil!',
+      text: `"${book.value.title}" masuk keranjang`,
+      timer: 2000,
+      showConfirmButton: false,
+      toast: true,
+      position: 'top-end',
+    })
+    addedToCart.value = true
+    setTimeout(() => (addedToCart.value = false), 2000)
+    window.dispatchEvent(new Event('cart-updated'))
+  } catch (e) {
+    Swal.fire({
+      icon: 'error',
+      title: 'Gagal!',
+      text: e.response?.data?.message ?? 'Gagal menambahkan ke keranjang',
+      timer: 2000,
+      showConfirmButton: false,
+      toast: true,
+      position: 'top-end',
+    })
+  }
+}
+
+function handleBeli() {
+  if (!isLoggedIn.value) {
+    showLoginAlert.value = true
+    return
+  }
+  router.push({ path: '/checkout', query: { book_id: book.value.id } })
+}
+
+function goToLogin() {
+  showLoginAlert.value = false
+  router.push('/login')
+}
+
+function goToRegister() {
+  showLoginAlert.value = false
+  router.push('/register')
+}
 
 const coverSrc = computed(() => {
   if (!book.value?.cover) return null
@@ -41,23 +91,7 @@ const stokLabel = computed(() => {
   return { text: `${s} tersedia`, cls: 'bg-green-100 text-green-600' }
 })
 
-function handleBeli() {
-  if (!isLoggedIn.value) {
-    showLoginAlert.value = true
-    return
-  }
-  // Navigate ke halaman checkout dengan book_id
-  router.push({ path: '/checkout', query: { book_id: book.value.id } })
-}
-
-function goToLogin() {
-  showLoginAlert.value = false
-  router.push('/login')
-}
-function goToRegister() {
-  showLoginAlert.value = false
-  router.push('/register')
-}
+onMounted(fetchDetail)
 </script>
 
 <template>
@@ -243,8 +277,8 @@ function goToRegister() {
               </div>
             </div>
 
-            <!-- TOMBOL BELI -->
             <div class="mt-auto flex items-center gap-3 flex-wrap">
+              <!-- Tombol Beli (existing) -->
               <button
                 @click="handleBeli"
                 :disabled="book.stock === 0"
@@ -257,6 +291,24 @@ function goToRegister() {
               >
                 {{ book.stock === 0 ? 'Stok Habis' : '🛒 Beli Buku' }}
               </button>
+
+              <!-- ✅ Tombol Keranjang -->
+              <button
+                @click="handleKeranjang"
+                :disabled="book.stock === 0"
+                :class="[
+                  'px-5 py-3 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center gap-2 border',
+                  book.stock === 0
+                    ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                    : addedToCart
+                      ? 'border-green-400 bg-green-50 text-green-600'
+                      : 'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-400 active:scale-95',
+                ]"
+              >
+                <span>{{ addedToCart ? '✅' : '🧺' }}</span>
+                {{ addedToCart ? 'Ditambahkan!' : 'Keranjang' }}
+              </button>
+
               <p v-if="!isLoggedIn" class="text-xs text-gray-400 flex items-center gap-1">
                 <svg
                   class="w-3.5 h-3.5"

@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import * as HeroIcons from '@heroicons/vue/24/outline'
 import { BookOpenIcon, RocketLaunchIcon, AcademicCapIcon } from '@heroicons/vue/24/outline'
-import axios from 'axios'
+import api from '@/lib/axios'
 
 const categories = ref([])
 const loading = ref(true)
@@ -14,7 +14,7 @@ const resolveIcon = (iconName) => {
 
 onMounted(async () => {
   try {
-    const response = await axios.get('http://127.0.0.1:8000/api/categories')
+    const response = await api.get('/categories')
     categories.value = response.data
   } catch (e) {
     // silent error
@@ -105,6 +105,7 @@ onMounted(async () => {
           <div
             v-for="category in categories"
             :key="category.id"
+            @click="$router.push({ path: '/books', query: { category: category.id } })"
             class="group relative bg-white rounded-2xl p-6 text-center border border-gray-100 hover:border-blue-200 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer hover:-translate-y-2 overflow-hidden"
           >
             <div
