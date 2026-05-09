@@ -45,8 +45,9 @@ function onCartUpdated() {
 
 const handleLogout = async () => {
   try {
-    await axios.post('/api/logout') // ✅ pakai axios global, tidak perlu hardcode URL + header manual
-  } catch (e) {
+    await axios.post('/api/logout')
+  } catch {
+    // optional: bisa kosong
   } finally {
     clearAuth()
     cartCount.value = 0

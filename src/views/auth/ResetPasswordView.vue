@@ -10,10 +10,13 @@ const route = useRoute()
 const password = ref('')
 const passwordConfirmation = ref('')
 const loading = ref(false)
-const token = route.query.token ?? ''
-const email = route.query.email ?? ''
+const showPassword = ref(false) // ✅ [FIX] toggle show/hide
+const showPasswordConfirmation = ref(false) // ✅ [FIX] toggle show/hide konfirmasi
 
-// ✅ Cek syarat password real-time
+// ✅ [FIX] decodeURIComponent agar email dengan karakter + tidak terpotong
+const token = route.query.token ?? ''
+const email = decodeURIComponent(route.query.email ?? '')
+
 const passwordChecks = computed(() => ({
   length: password.value.length >= 8,
   upper: /[A-Z]/.test(password.value),
@@ -68,19 +71,16 @@ const handleReset = async () => {
 
     router.push('/login')
   } catch (error) {
-    const errors = error.response?.data?.errors
-    if (errors) {
+    // ✅ [FIX] Cek status dulu, baru baca isi errors — hindari dead branch
+    if (error.response?.status === 422) {
+      const errors = error.response?.data?.errors
+      const message = errors
+        ? Object.values(errors)[0][0]
+        : (error.response?.data?.message ?? 'Token tidak valid atau sudah expired.')
       Swal.fire({
         icon: 'error',
         title: 'Gagal',
-        text: Object.values(errors)[0][0],
-        confirmButtonColor: '#2563eb',
-      })
-    } else if (error.response?.status === 422) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal',
-        text: error.response?.data?.message ?? 'Token tidak valid atau sudah expired.',
+        text: message,
         confirmButtonColor: '#2563eb',
       })
     } else if (error.response?.status === 429) {
@@ -114,117 +114,142 @@ const handleReset = async () => {
         <p class="text-sm text-gray-500 mt-1">Buat password baru untuk akunmu</p>
       </div>
 
-      <!-- Input Password Baru -->
-      <div class="mb-4">
-        <label class="text-xs text-gray-500 mb-1 block">Password Baru</label>
-        <input
-          v-model="password"
-          type="password"
-          placeholder="Password baru"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-        />
-
-        <!-- Strength Bar -->
-        <div v-if="password" class="mt-2">
-          <div class="flex items-center justify-between mb-1">
-            <span class="text-xs text-gray-400">Kekuatan password</span>
-            <span
-              class="text-xs font-semibold"
-              :class="{
-                'text-red-500': passwordStrength.label === 'Lemah',
-                'text-yellow-500': passwordStrength.label === 'Cukup',
-                'text-blue-500': passwordStrength.label === 'Kuat',
-                'text-green-600': passwordStrength.label === 'Sangat Kuat',
-              }"
-              >{{ passwordStrength.label }}</span
+      <!-- ✅ [FIX] Bungkus dengan form agar Enter bisa submit -->
+      <form @submit.prevent="handleReset">
+        <!-- Input Password Baru -->
+        <div class="mb-4">
+          <label class="text-xs text-gray-500 mb-1 block">Password Baru</label>
+          <!-- ✅ [FIX] Toggle show/hide password -->
+          <div class="relative">
+            <input
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="Password baru"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+            <button
+              type="button"
+              @click="showPassword = !showPassword"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition text-sm"
+              :aria-label="showPassword ? 'Sembunyikan password' : 'Tampilkan password'"
             >
-          </div>
-          <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              class="h-full rounded-full transition-all duration-300"
-              :class="[passwordStrength.color, passwordStrength.width]"
-            ></div>
+              {{ showPassword ? '🙈' : '👁️' }}
+            </button>
           </div>
 
-          <!-- Checklist -->
-          <div class="mt-2 grid grid-cols-2 gap-1">
-            <div
-              class="flex items-center gap-1.5 text-xs"
-              :class="passwordChecks.length ? 'text-green-600' : 'text-gray-400'"
-            >
-              {{ passwordChecks.length ? '✓' : '○' }} Min. 8 karakter
+          <!-- Strength Bar -->
+          <div v-if="password" class="mt-2">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs text-gray-400">Kekuatan password</span>
+              <span
+                class="text-xs font-semibold"
+                :class="{
+                  'text-red-500': passwordStrength.label === 'Lemah',
+                  'text-yellow-500': passwordStrength.label === 'Cukup',
+                  'text-blue-500': passwordStrength.label === 'Kuat',
+                  'text-green-600': passwordStrength.label === 'Sangat Kuat',
+                }"
+                >{{ passwordStrength.label }}</span
+              >
             </div>
-            <div
-              class="flex items-center gap-1.5 text-xs"
-              :class="passwordChecks.upper ? 'text-green-600' : 'text-gray-400'"
-            >
-              {{ passwordChecks.upper ? '✓' : '○' }} Huruf besar (A-Z)
+            <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                class="h-full rounded-full transition-all duration-300"
+                :class="[passwordStrength.color, passwordStrength.width]"
+              ></div>
             </div>
-            <div
-              class="flex items-center gap-1.5 text-xs"
-              :class="passwordChecks.lower ? 'text-green-600' : 'text-gray-400'"
-            >
-              {{ passwordChecks.lower ? '✓' : '○' }} Huruf kecil (a-z)
-            </div>
-            <div
-              class="flex items-center gap-1.5 text-xs"
-              :class="passwordChecks.number ? 'text-green-600' : 'text-gray-400'"
-            >
-              {{ passwordChecks.number ? '✓' : '○' }} Angka (0-9)
-            </div>
-            <div
-              class="flex items-center gap-1.5 text-xs col-span-2"
-              :class="passwordChecks.symbol ? 'text-green-600' : 'text-gray-400'"
-            >
-              {{ passwordChecks.symbol ? '✓' : '○' }} Simbol (!@#$%^&*)
+
+            <!-- Checklist -->
+            <div class="mt-2 grid grid-cols-2 gap-1">
+              <div
+                class="flex items-center gap-1.5 text-xs"
+                :class="passwordChecks.length ? 'text-green-600' : 'text-gray-400'"
+              >
+                {{ passwordChecks.length ? '✓' : '○' }} Min. 8 karakter
+              </div>
+              <div
+                class="flex items-center gap-1.5 text-xs"
+                :class="passwordChecks.upper ? 'text-green-600' : 'text-gray-400'"
+              >
+                {{ passwordChecks.upper ? '✓' : '○' }} Huruf besar (A-Z)
+              </div>
+              <div
+                class="flex items-center gap-1.5 text-xs"
+                :class="passwordChecks.lower ? 'text-green-600' : 'text-gray-400'"
+              >
+                {{ passwordChecks.lower ? '✓' : '○' }} Huruf kecil (a-z)
+              </div>
+              <div
+                class="flex items-center gap-1.5 text-xs"
+                :class="passwordChecks.number ? 'text-green-600' : 'text-gray-400'"
+              >
+                {{ passwordChecks.number ? '✓' : '○' }} Angka (0-9)
+              </div>
+              <div
+                class="flex items-center gap-1.5 text-xs col-span-2"
+                :class="passwordChecks.symbol ? 'text-green-600' : 'text-gray-400'"
+              >
+                {{ passwordChecks.symbol ? '✓' : '○' }} Simbol (!@#$%^&*)
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Input Konfirmasi -->
-      <div class="mb-6">
-        <label class="text-xs text-gray-500 mb-1 block">Konfirmasi Password</label>
-        <input
-          v-model="passwordConfirmation"
-          type="password"
-          placeholder="Ulangi password baru"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-          :class="
-            passwordConfirmation && !passwordMatched ? 'border-red-300 focus:ring-red-200' : ''
-          "
-        />
-        <p v-if="passwordConfirmation && !passwordMatched" class="text-xs text-red-500 mt-1">
-          Password tidak cocok
-        </p>
-        <p v-if="passwordMatched" class="text-xs text-green-600 mt-1">✓ Password cocok</p>
-      </div>
+        <!-- Input Konfirmasi -->
+        <div class="mb-6">
+          <label class="text-xs text-gray-500 mb-1 block">Konfirmasi Password</label>
+          <!-- ✅ [FIX] Toggle show/hide konfirmasi -->
+          <div class="relative">
+            <input
+              v-model="passwordConfirmation"
+              :type="showPasswordConfirmation ? 'text' : 'password'"
+              placeholder="Ulangi password baru"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+              :class="
+                passwordConfirmation && !passwordMatched ? 'border-red-300 focus:ring-red-200' : ''
+              "
+            />
+            <button
+              type="button"
+              @click="showPasswordConfirmation = !showPasswordConfirmation"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition text-sm"
+              :aria-label="showPasswordConfirmation ? 'Sembunyikan password' : 'Tampilkan password'"
+            >
+              {{ showPasswordConfirmation ? '🙈' : '👁️' }}
+            </button>
+          </div>
+          <p v-if="passwordConfirmation && !passwordMatched" class="text-xs text-red-500 mt-1">
+            Password tidak cocok
+          </p>
+          <p v-if="passwordMatched" class="text-xs text-green-600 mt-1">✓ Password cocok</p>
+        </div>
 
-      <!-- Tombol -->
-      <button
-        @click="handleReset"
-        :disabled="!canSubmit"
-        class="inline-flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition"
-      >
-        <svg
-          v-if="loading"
-          class="animate-spin h-4 w-4"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
+        <!-- ✅ [FIX] type="submit" agar Enter bisa trigger -->
+        <button
+          type="submit"
+          :disabled="!canSubmit"
+          class="inline-flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition"
         >
-          <circle
-            class="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            stroke-width="4"
-          ></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-        </svg>
-        {{ loading ? 'Memproses...' : 'Reset Password' }}
-      </button>
+          <svg
+            v-if="loading"
+            class="animate-spin h-4 w-4"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          {{ loading ? 'Memproses...' : 'Reset Password' }}
+        </button>
+      </form>
 
       <p class="text-center text-sm text-gray-500 mt-4">
         Kembali ke

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/lib/axios'
 import logo from '@/assets/images/logo-nav.png'
@@ -17,6 +17,15 @@ const selectedCategory = ref(route.query.category || null)
 const sentinelEl = ref(null)
 let observer = null
 let searchTimer = null
+
+// ✅ [FIX #1] Base URL dari env variable, tidak hardcoded
+const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
+
+function coverUrl(cover) {
+  if (!cover) return null
+  if (cover.startsWith('http')) return cover
+  return `${storageBase}/${cover}`
+}
 
 async function fetchBooks(reset = false) {
   if (loading.value) return
@@ -119,14 +128,9 @@ onUnmounted(() => {
   clearTimeout(searchTimer)
 })
 
-const hasMore = () => page.value <= lastPage.value
-const isEmpty = () => !loading.value && !firstLoad.value && books.value.length === 0
-
-function coverUrl(cover) {
-  if (!cover) return null
-  if (cover.startsWith('http')) return cover
-  return `/storage/${cover}`
-}
+// ✅ [FIX #2] hasMore & isEmpty jadi computed, lebih idiomatis Vue
+const hasMore = computed(() => page.value <= lastPage.value)
+const isEmpty = computed(() => !loading.value && !firstLoad.value && books.value.length === 0)
 </script>
 
 <template>
@@ -161,6 +165,7 @@ function coverUrl(cover) {
           />
           <button
             v-if="search"
+            type="button"
             @click="search = ''"
             class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition"
           >
@@ -197,10 +202,12 @@ function coverUrl(cover) {
 
       <!-- ADA DATA -->
       <div v-else-if="books.length > 0" class="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <div
+        <!-- ✅ [FIX #3] Seluruh card bisa diklik, bukan hanya teks "Lihat Detail" -->
+        <router-link
           v-for="book in books"
           :key="book.id"
-          class="group bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+          :to="`/books/${book.id}`"
+          class="group bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer block"
         >
           <div class="overflow-hidden rounded-xl bg-gray-100">
             <img
@@ -221,14 +228,10 @@ function coverUrl(cover) {
           <p class="text-blue-600 font-semibold mt-2 text-sm">
             Rp {{ Number(book.price).toLocaleString('id-ID') }}
           </p>
-          <!-- ganti div biasa jadi router-link -->
-          <router-link
-            :to="`/books/${book.id}`"
-            class="mt-2 text-xs text-gray-400 group-hover:text-blue-500 transition"
-          >
+          <span class="mt-2 text-xs text-gray-400 group-hover:text-blue-500 transition block">
             Lihat Detail →
-          </router-link>
-        </div>
+          </span>
+        </router-link>
 
         <!-- Skeleton load-more -->
         <template v-if="loading">
@@ -246,10 +249,7 @@ function coverUrl(cover) {
       </div>
 
       <!-- EMPTY STATE -->
-      <div
-        v-else-if="isEmpty()"
-        class="flex flex-col items-center justify-center text-center py-24"
-      >
+      <div v-else-if="isEmpty" class="flex flex-col items-center justify-center text-center py-24">
         <div class="absolute w-[300px] h-[300px] bg-blue-400/20 rounded-full blur-3xl"></div>
         <img
           :src="logo"
@@ -266,6 +266,7 @@ function coverUrl(cover) {
         </p>
         <button
           v-if="search"
+          type="button"
           @click="search = ''"
           class="mt-6 px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition relative z-10"
         >
@@ -284,8 +285,9 @@ function coverUrl(cover) {
       <div ref="sentinelEl" class="h-4 mt-4"></div>
 
       <!-- End of list -->
+      <!-- ✅ [FIX #2] hasMore tanpa () karena sudah computed -->
       <div
-        v-if="!hasMore() && !loading && books.length > 0"
+        v-if="!hasMore && !loading && books.length > 0"
         class="text-center text-gray-400 text-sm py-8"
       >
         ✅ Semua buku sudah ditampilkan

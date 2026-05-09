@@ -12,6 +12,7 @@ const { setAuth } = useAuth()
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
+const showPassword = ref(false) // ✅ [FIX] toggle show/hide password
 
 const resendEmail = async () => {
   try {
@@ -43,15 +44,26 @@ const resendEmail = async () => {
 
 const handleLogin = async () => {
   if (loading.value) return
-  loading.value = true
 
+  // ✅ [FIX] Validasi input sebelum hit API
+  if (!email.value.trim() || !password.value) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Form Tidak Lengkap',
+      text: 'Email dan password wajib diisi.',
+      confirmButtonColor: '#2563eb',
+    })
+    return
+  }
+
+  loading.value = true
   try {
     const res = await api.post('/login', {
       email: email.value,
       password: password.value,
     })
 
-    setAuth(res.data.token, res.data.user) // ← reactive, navbar langsung update
+    setAuth(res.data.token, res.data.user)
 
     await Swal.fire({
       icon: 'success',
@@ -172,6 +184,7 @@ onMounted(() => {
         <!-- Password -->
         <div>
           <label class="text-sm text-gray-600">Password</label>
+          <!-- ✅ [FIX] Toggle show/hide password -->
           <div class="relative group mt-1">
             <span
               class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition"
@@ -179,12 +192,20 @@ onMounted(() => {
             >
             <input
               v-model="password"
-              type="password"
+              :type="showPassword ? 'text' : 'password'"
               placeholder="Password"
               autocomplete="current-password"
               :disabled="loading"
-              class="input-modern pl-10 disabled:opacity-50"
+              class="input-modern pl-10 pr-10 disabled:opacity-50"
             />
+            <button
+              type="button"
+              @click="showPassword = !showPassword"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition text-sm"
+              :aria-label="showPassword ? 'Sembunyikan password' : 'Tampilkan password'"
+            >
+              {{ showPassword ? '🙈' : '👁️' }}
+            </button>
           </div>
         </div>
 

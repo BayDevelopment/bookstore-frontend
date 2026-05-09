@@ -20,10 +20,28 @@ const token = localStorage.getItem('token')
 const isFromCart = computed(() => !route.query.book_id)
 const copied = ref(false)
 
+// ✅ [FIX #1] Base URL dari env variable, tidak hardcoded
+const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
+
+// ✅ [FIX #2] maxQty pakai konstanta, tidak hardcoded angka
+const MAX_QTY = 10
+const maxQty = computed(() => Math.min(book.value?.stock ?? 1, MAX_QTY))
+
+// ✅ [FIX #3] copyNorek dengan fallback untuk HTTP / browser lama
 async function copyNorek() {
   const norek = selectedMethod.value?.account_number
   if (!norek) return
-  await navigator.clipboard.writeText(norek)
+  try {
+    await navigator.clipboard.writeText(norek)
+  } catch {
+    // fallback untuk browser yang tidak support clipboard API
+    const el = document.createElement('textarea')
+    el.value = norek
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+  }
   copied.value = true
   setTimeout(() => (copied.value = false), 2000)
 }
@@ -48,10 +66,11 @@ onMounted(async () => {
         price: Number(item.book.price),
         qty: item.qty,
         stock: item.book.stock,
+        // ✅ [FIX #1] pakai storageBase
         image: item.book.cover?.startsWith('http')
           ? item.book.cover
           : item.book.cover
-            ? `/storage/${item.book.cover}`
+            ? `${storageBase}/${item.book.cover}`
             : null,
       }))
       paymentMethods.value = methodRes.data.data ?? []
@@ -65,20 +84,20 @@ onMounted(async () => {
     }
 
     if (paymentMethods.value.length > 0) selectedMethod.value = paymentMethods.value[0]
-  } catch (e) {
+  } catch {
+    // ✅ [FIX #4] hapus (e) karena tidak dipakai — hindari ESLint warning
     error.value = 'Gagal memuat data.'
   } finally {
     loading.value = false
   }
 })
 
+// ✅ [FIX #1] coverSrc pakai storageBase
 const coverSrc = computed(() => {
   const c = book.value?.cover
   if (!c) return null
-  return c.startsWith('http') ? c : `/storage/${c}`
+  return c.startsWith('http') ? c : `${storageBase}/${c}`
 })
-
-const maxQty = computed(() => Math.min(book.value?.stock ?? 1, 10))
 
 const totalPrice = computed(() => {
   if (isFromCart.value) {
@@ -90,6 +109,7 @@ const totalPrice = computed(() => {
 const formattedTotal = computed(() => totalPrice.value.toLocaleString('id-ID'))
 const isCash = computed(() => selectedMethod.value?.code === 'cash')
 
+// ✅ [FIX #5] type="button" ditambahkan di template, fungsi tetap sama
 function increment() {
   if (quantity.value < maxQty.value) quantity.value++
 }
@@ -140,7 +160,9 @@ async function handleOrder() {
 
     <div class="relative max-w-xl mx-auto px-6 pt-8 pb-16">
       <!-- BACK -->
+      <!-- ✅ [FIX #5] type="button" pada semua tombol -->
       <button
+        type="button"
         @click="router.back()"
         class="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 transition group mb-6"
       >
@@ -172,6 +194,7 @@ async function handleOrder() {
         <p class="text-4xl mb-3">⚠️</p>
         <p class="text-gray-600">{{ error }}</p>
         <button
+          type="button"
           @click="router.back()"
           class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-full text-sm hover:bg-blue-700 transition"
         >
@@ -191,7 +214,12 @@ async function handleOrder() {
           <div class="space-y-3">
             <div v-for="item in cartItems" :key="item.cartId" class="flex gap-3 items-center">
               <div class="w-12 h-16 rounded-lg overflow-hidden bg-gray-100 shrink-0">
-                <img v-if="item.image" :src="item.image" class="w-full h-full object-cover" />
+                <img
+                  v-if="item.image"
+                  :src="item.image"
+                  :alt="item.title"
+                  class="w-full h-full object-cover"
+                />
                 <div v-else class="w-full h-full flex items-center justify-center text-xl">📚</div>
               </div>
               <div class="flex-1 min-w-0">
@@ -215,7 +243,12 @@ async function handleOrder() {
           </h2>
           <div class="flex gap-4">
             <div class="shrink-0 w-14 h-20 rounded-xl overflow-hidden bg-gray-100 shadow-sm">
-              <img v-if="coverSrc" :src="coverSrc" class="w-full h-full object-cover" />
+              <img
+                v-if="coverSrc"
+                :src="coverSrc"
+                :alt="book.title"
+                class="w-full h-full object-cover"
+              />
               <div v-else class="w-full h-full flex items-center justify-center text-2xl">📚</div>
             </div>
             <div class="flex-1 min-w-0">
@@ -239,6 +272,7 @@ async function handleOrder() {
           </h2>
           <div class="flex items-center gap-4">
             <button
+              type="button"
               @click="decrement"
               :disabled="quantity <= 1"
               class="w-10 h-10 rounded-xl border border-gray-200 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
@@ -247,6 +281,7 @@ async function handleOrder() {
             </button>
             <span class="text-2xl font-bold text-gray-800 w-8 text-center">{{ quantity }}</span>
             <button
+              type="button"
               @click="increment"
               :disabled="quantity >= maxQty"
               class="w-10 h-10 rounded-xl border border-gray-200 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
@@ -314,6 +349,7 @@ async function handleOrder() {
             </label>
           </div>
         </div>
+
         <!-- Detail Rekening Bank (muncul jika bukan cash) -->
         <transition name="slide-fade">
           <div
@@ -342,8 +378,10 @@ async function handleOrder() {
                   <span class="text-sm font-bold text-blue-700 tracking-wider font-mono">
                     {{ selectedMethod.account_number ?? '-' }}
                   </span>
+                  <!-- ✅ [FIX #5] type="button" -->
                   <button
                     v-if="selectedMethod.account_number"
+                    type="button"
                     @click="copyNorek"
                     class="text-xs px-2 py-0.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-md transition-colors"
                   >
@@ -388,7 +426,9 @@ async function handleOrder() {
 
           <p v-if="orderError" class="text-xs text-red-500 mb-3 text-center">⚠ {{ orderError }}</p>
 
+          <!-- ✅ [FIX #5] type="button" -->
           <button
+            type="button"
             @click="handleOrder"
             :disabled="orderLoading || !selectedMethod"
             :class="[
@@ -406,8 +446,8 @@ async function handleOrder() {
                 r="10"
                 stroke="currentColor"
                 stroke-width="4"
-              ></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+              />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
             {{
               orderLoading
@@ -443,7 +483,6 @@ async function handleOrder() {
     background-position: -200% 0;
   }
 }
-
 .slide-fade-enter-active {
   transition: all 0.25s ease;
 }

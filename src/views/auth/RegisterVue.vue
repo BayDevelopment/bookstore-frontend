@@ -12,8 +12,9 @@ const fakultasList = ref([])
 const prodiList = ref([])
 const loadingReferensi = ref(false)
 
-const prodiTersedia = computed(
-  () => prodiList.value.filter((p) => p.fakultas_id == form.fakultas_id), // ✅ == bukan ===
+// ✅ [FIX] Cast ke String agar perbandingan aman (hindari == yang implicit)
+const prodiTersedia = computed(() =>
+  prodiList.value.filter((p) => String(p.fakultas_id) === String(form.fakultas_id)),
 )
 
 const fetchReferensi = async () => {
@@ -22,7 +23,7 @@ const fetchReferensi = async () => {
     const [resFakultas, resProdi] = await Promise.all([api.get('/fakultas'), api.get('/prodi')])
     fakultasList.value = resFakultas.data.data
     prodiList.value = resProdi.data.data
-  } catch (e) {
+  } catch {
     Swal.fire({
       icon: 'error',
       title: 'Gagal memuat data',
@@ -49,8 +50,12 @@ const form = reactive({
 
 const errors = reactive({})
 
+// ✅ [FIX] Toggle show/hide password
+const showPassword = ref(false)
+const showPasswordConfirmation = ref(false)
+
 const onFakultasChange = () => {
-  form.prodi_id = '' // reset prodi saat ganti fakultas
+  form.prodi_id = ''
 }
 
 // ─── Validasi ────────────────────────────────────────────────────
@@ -125,7 +130,7 @@ const handleRegister = async () => {
       password_confirmation: form.password_confirmation,
     })
 
-    localStorage.setItem('temp_email', form.email) // ✅ simpan email
+    localStorage.setItem('temp_email', form.email)
 
     await Swal.fire({
       icon: 'success',
@@ -134,7 +139,7 @@ const handleRegister = async () => {
       confirmButtonColor: '#2563eb',
     })
 
-    router.push('/verify-email') // ✅ arahkan ke verify
+    router.push('/verify-email')
   } catch (error) {
     if (error.response?.status === 422) {
       const serverErrors = error.response.data.errors
@@ -179,7 +184,7 @@ const handleRegister = async () => {
 
     <!-- Card -->
     <div
-      class="relative w-full max-w-3xl bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 p-8"
+      class="relative w-full max-w-3xl bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 p-8 mb-6 mt-3"
     >
       <!-- Header -->
       <div class="text-center mb-6">
@@ -247,38 +252,51 @@ const handleRegister = async () => {
           <p v-if="errors.email" class="text-xs text-red-500 mt-1">{{ errors.email }}</p>
         </div>
 
-        <!-- Fakultas -->
-        <select
-          v-model="form.fakultas_id"
-          @change="onFakultasChange"
-          class="input-modern pl-10"
-          :disabled="loadingReferensi"
-        >
-          <option value="" disabled>
-            {{ loadingReferensi ? 'Memuat...' : 'Pilih Fakultas' }}
-          </option>
-          <option v-for="f in fakultasList" :key="f.id" :value="f.id">
-            {{ f.nama_fakultas }}
-          </option>
-        </select>
-        <p v-if="errors.fakultas_id" class="text-xs text-red-500 mt-1">{{ errors.fakultas_id }}</p>
+        <!-- ✅ [FIX] Fakultas — wrapper dengan label & error yang konsisten -->
+        <div>
+          <label class="text-sm text-gray-600">Fakultas</label>
+          <div class="relative group mt-1">
+            <select
+              v-model="form.fakultas_id"
+              @change="onFakultasChange"
+              class="input-modern pl-3"
+              :disabled="loadingReferensi"
+            >
+              <option value="" disabled>
+                {{ loadingReferensi ? 'Memuat...' : 'Pilih Fakultas' }}
+              </option>
+              <option v-for="f in fakultasList" :key="f.id" :value="f.id">
+                {{ f.nama_fakultas }}
+              </option>
+            </select>
+          </div>
+          <p v-if="errors.fakultas_id" class="text-xs text-red-500 mt-1">
+            {{ errors.fakultas_id }}
+          </p>
+        </div>
 
-        <!-- Prodi -->
-        <select
-          v-model="form.prodi_id"
-          :disabled="!form.fakultas_id || loadingReferensi"
-          class="input-modern pl-10 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <option value="" disabled>Pilih Program Studi</option>
-          <option v-for="p in prodiTersedia" :key="p.id" :value="p.id">
-            {{ p.nama_prodi }}
-          </option>
-        </select>
-        <p v-if="errors.prodi_id" class="text-xs text-red-500 mt-1">{{ errors.prodi_id }}</p>
+        <!-- ✅ [FIX] Prodi — wrapper dengan label & error yang konsisten -->
+        <div>
+          <label class="text-sm text-gray-600">Program Studi</label>
+          <div class="relative group mt-1">
+            <select
+              v-model="form.prodi_id"
+              :disabled="!form.fakultas_id || loadingReferensi"
+              class="input-modern pl-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="" disabled>Pilih Program Studi</option>
+              <option v-for="p in prodiTersedia" :key="p.id" :value="p.id">
+                {{ p.nama_prodi }}
+              </option>
+            </select>
+          </div>
+          <p v-if="errors.prodi_id" class="text-xs text-red-500 mt-1">{{ errors.prodi_id }}</p>
+        </div>
 
         <!-- Password -->
         <div>
           <label class="text-sm text-gray-600">Password</label>
+          <!-- ✅ [FIX] Toggle show/hide password -->
           <div class="relative group mt-1">
             <span
               class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition"
@@ -286,11 +304,19 @@ const handleRegister = async () => {
             >
             <input
               v-model="form.password"
-              type="password"
+              :type="showPassword ? 'text' : 'password'"
               placeholder="Min 8 karakter"
               maxlength="255"
-              class="input-modern pl-10"
+              class="input-modern pl-10 pr-10"
             />
+            <button
+              type="button"
+              @click="showPassword = !showPassword"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition text-sm"
+              :aria-label="showPassword ? 'Sembunyikan password' : 'Tampilkan password'"
+            >
+              {{ showPassword ? '🙈' : '👁️' }}
+            </button>
           </div>
           <p class="text-xs text-gray-400 mt-1">Huruf besar, huruf kecil, angka & simbol</p>
           <p v-if="errors.password" class="text-xs text-red-500 mt-1">{{ errors.password }}</p>
@@ -299,6 +325,7 @@ const handleRegister = async () => {
         <!-- Konfirmasi Password -->
         <div>
           <label class="text-sm text-gray-600">Konfirmasi Password</label>
+          <!-- ✅ [FIX] Toggle show/hide konfirmasi password -->
           <div class="relative group mt-1">
             <span
               class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition"
@@ -306,11 +333,19 @@ const handleRegister = async () => {
             >
             <input
               v-model="form.password_confirmation"
-              type="password"
+              :type="showPasswordConfirmation ? 'text' : 'password'"
               placeholder="Ulangi password"
               maxlength="255"
-              class="input-modern pl-10"
+              class="input-modern pl-10 pr-10"
             />
+            <button
+              type="button"
+              @click="showPasswordConfirmation = !showPasswordConfirmation"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition text-sm"
+              :aria-label="showPasswordConfirmation ? 'Sembunyikan password' : 'Tampilkan password'"
+            >
+              {{ showPasswordConfirmation ? '🙈' : '👁️' }}
+            </button>
           </div>
           <p v-if="errors.password_confirmation" class="text-xs text-red-500 mt-1">
             {{ errors.password_confirmation }}
@@ -322,8 +357,25 @@ const handleRegister = async () => {
           <button
             type="submit"
             :disabled="loading"
-            class="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            class="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
+            <svg
+              v-if="loading"
+              class="animate-spin h-5 w-5 text-white"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
             {{ loading ? 'Mendaftar...' : 'Daftar Sekarang' }}
           </button>
         </div>

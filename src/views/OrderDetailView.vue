@@ -1,7 +1,8 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onUnmounted } from 'vue' // Tambahkan onUnmounted
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/lib/axios'
+import DOMPurify from 'dompurify' // Import DOMPurify
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +21,12 @@ const uploadSuccess = ref(false)
 const token = localStorage.getItem('token')
 const copied = ref(false)
 
+// Helper: Sanitasi HTML/Teks
+const sanitize = (html) => {
+  if (!html) return ''
+  return DOMPurify.sanitize(html)
+}
+
 async function copyNorek() {
   const norek = order.value?.payment_method?.account_number
   if (!norek) return
@@ -34,7 +41,7 @@ async function fetchOrder() {
   try {
     const { data } = await api.get(`/orders/${route.params.id}`)
     order.value = data.data ?? data
-  } catch (e) {
+  } catch {
     error.value = 'Gagal memuat detail pesanan.'
   } finally {
     loading.value = false
@@ -47,6 +54,13 @@ onMounted(() => {
     return
   }
   fetchOrder()
+})
+
+// Cleanup URL Preview untuk mencegah memory leak
+onUnmounted(() => {
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+  }
 })
 
 const proofStatus = computed(() => order.value?.proof_status ?? 'not_uploaded')
@@ -68,6 +82,7 @@ const orderStatusMap = {
   confirmed: { label: 'Dikonfirmasi', cls: 'bg-green-100 text-green-700 border-green-200' },
   rejected: { label: 'Ditolak', cls: 'bg-red-100 text-red-700 border-red-200' },
 }
+
 const orderStatusInfo = computed(
   () =>
     orderStatusMap[orderStatus.value] ?? {
@@ -82,6 +97,7 @@ const proofStatusMap = {
   verified: { label: 'Bukti Diverifikasi', cls: 'bg-green-100 text-green-700', icon: '✅' },
   invalid: { label: 'Bukti Ditolak', cls: 'bg-red-100 text-red-700', icon: '❌' },
 }
+
 const proofStatusInfo = computed(
   () =>
     proofStatusMap[proofStatus.value] ?? {
@@ -96,6 +112,7 @@ const coverSrc = computed(() => {
   if (!c) return null
   return c.startsWith('http') ? c : `/storage/${c}`
 })
+
 const proofSrc = computed(() => {
   const p = order.value?.payment_proof
   if (!p) return null
@@ -105,14 +122,28 @@ const proofSrc = computed(() => {
 function onFileChange(e) {
   const file = e.target.files[0]
   if (!file) return
+
+  // Perbaikan: Validasi ukuran file (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    uploadError.value = 'Ukuran file terlalu besar (Maks 5MB)'
+    if (fileInput.value) fileInput.value.value = ''
+    return
+  }
+
+  // Perbaikan: Hapus URL lama sebelum buat baru
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+
   selectedFile.value = file
   previewUrl.value = URL.createObjectURL(file)
   uploadError.value = null
 }
+
 function triggerFilePicker() {
   fileInput.value?.click()
 }
+
 function removeFile() {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
   selectedFile.value = null
   previewUrl.value = null
   if (fileInput.value) fileInput.value.value = ''
@@ -132,8 +163,7 @@ async function uploadBukti() {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     uploadSuccess.value = true
-    selectedFile.value = null
-    previewUrl.value = null
+    removeFile() // Reset file state
     await fetchOrder()
   } catch (e) {
     uploadError.value = e.response?.data?.message ?? 'Gagal mengupload. Coba lagi.'
@@ -153,7 +183,6 @@ function formatDate(d) {
   })
 }
 </script>
-
 <template>
   <div class="relative min-h-screen overflow-hidden">
     <div class="absolute inset-0 pointer-events-none grid-bg"></div>
@@ -547,26 +576,40 @@ function formatDate(d) {
           </div>
         </div>
 
-        <!-- ── invalid: Ditolak + Upload Ulang ── -->
-        <div v-if="isInvalid" class="bg-red-50 border border-red-200 rounded-2xl p-5 mb-4">
+        <!-- ── Bagian Status Invalid: Ditolak Admin ── -->
+        <div
+          v-if="isInvalid"
+          class="bg-red-50 border border-red-200 rounded-2xl p-5 mb-4 shadow-sm"
+        >
           <div class="flex items-start gap-3">
-            <span class="text-2xl mt-0.5">❌</span>
+            <span class="text-2xl mt-0.5 animate-bounce">❌</span>
             <div class="flex-1">
               <h2 class="text-sm font-bold text-red-800 mb-1">Bukti Pembayaran Ditolak</h2>
-              <!-- proof_note dari admin -->
+
+              <!-- Container Catatan Admin (Sangat Penting) -->
               <div
                 v-if="order.proof_note"
-                class="bg-red-100 border border-red-200 rounded-xl px-4 py-3 mb-3"
+                class="bg-red-100 border border-red-200 rounded-xl px-4 py-3 mb-4 shadow-inner"
               >
-                <p class="text-xs font-semibold text-red-700 mb-1">Catatan dari Admin:</p>
-                <p class="text-sm text-red-600">{{ order.proof_note }}</p>
+                <p
+                  class="text-[10px] font-bold text-red-700 uppercase tracking-widest mb-1 opacity-70"
+                >
+                  Catatan dari Admin:
+                </p>
+                <div
+                  class="text-sm text-red-600 break-words leading-relaxed"
+                  v-html="sanitize(order.proof_note)"
+                ></div>
               </div>
-              <p class="text-xs text-red-500 mb-4">
-                Silakan upload ulang bukti pembayaran yang valid.
+
+              <p class="text-xs text-red-500 mb-4 font-medium italic">
+                * Harap unggah kembali foto bukti transfer yang lebih jelas.
               </p>
+
+              <!-- Input File Re-upload -->
               <div
                 @click="triggerFilePicker"
-                class="border-2 border-dashed border-red-200 rounded-xl p-4 text-center cursor-pointer hover:border-red-300 transition"
+                class="border-2 border-dashed border-red-200 rounded-xl p-4 text-center cursor-pointer hover:border-red-400 hover:bg-red-100/30 transition-all group"
               >
                 <input
                   ref="fileInput"
@@ -576,23 +619,39 @@ function formatDate(d) {
                   @change="onFileChange"
                 />
                 <div v-if="previewUrl">
-                  <img :src="previewUrl" class="max-h-36 mx-auto rounded-lg object-contain mb-2" />
+                  <img
+                    :src="previewUrl"
+                    class="max-h-36 mx-auto rounded-lg object-contain mb-2 shadow-md"
+                  />
                   <p class="text-xs text-gray-500 truncate">{{ selectedFile?.name }}</p>
                 </div>
                 <div v-else>
-                  <p class="text-sm font-medium text-red-500">📎 Pilih bukti baru</p>
-                  <p class="text-xs text-red-400 mt-1">JPG, PNG, atau PDF • Maks 5MB</p>
+                  <p
+                    class="text-sm font-bold text-red-500 group-hover:scale-105 transition-transform"
+                  >
+                    📎 Pilih Bukti Baru
+                  </p>
+                  <p class="text-[10px] text-red-400 mt-1 uppercase">
+                    Format: JPG, PNG, PDF (Maks 5MB)
+                  </p>
                 </div>
               </div>
-              <p v-if="uploadError" class="mt-2 text-xs text-red-500">⚠ {{ uploadError }}</p>
+
+              <p
+                v-if="uploadError"
+                class="mt-3 text-xs text-red-600 font-bold flex items-center gap-1"
+              >
+                <span>⚠️</span> {{ uploadError }}
+              </p>
+
               <button
                 @click="uploadBukti"
                 :disabled="!selectedFile || uploading"
                 :class="[
-                  'mt-3 w-full py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2',
+                  'mt-4 w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-lg',
                   selectedFile && !uploading
-                    ? 'bg-red-500 text-white hover:bg-red-600'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                    ? 'bg-red-600 text-white hover:bg-red-700 active:scale-95'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed',
                 ]"
               >
                 <svg v-if="uploading" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -606,7 +665,7 @@ function formatDate(d) {
                   ></circle>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
                 </svg>
-                {{ uploading ? 'Mengupload...' : '🔄 Upload Ulang Bukti' }}
+                {{ uploading ? 'Sedang Mengirim...' : '🔄 Upload Ulang Sekarang' }}
               </button>
             </div>
           </div>

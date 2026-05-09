@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/lib/axios'
 import Swal from 'sweetalert2'
+import DOMPurify from 'dompurify' // ✅ [FIX #1] sanitasi XSS
 
 const route = useRoute()
 const router = useRouter()
@@ -12,10 +13,32 @@ const loading = ref(true)
 const error = ref(null)
 const showLoginAlert = ref(false)
 const addedToCart = ref(false)
+const cartLoading = ref(false)
 
-const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+// ✅ [FIX #2] Reaktif terhadap perubahan token (termasuk logout di tab lain)
+const token = ref(localStorage.getItem('token'))
+const isLoggedIn = computed(() => !!token.value)
+
+function onStorageChange(e) {
+  if (e.key === 'token') {
+    token.value = e.newValue
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('storage', onStorageChange)
+  fetchDetail()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('storage', onStorageChange)
+  // ✅ [FIX #3] Bersihkan timer saat component unmount
+  clearTimeout(addedTimer)
+})
 
 async function fetchDetail() {
+  // ✅ Guard: jangan fetch ulang saat masih loading
+  if (loading.value && book.value !== null) return
   loading.value = true
   error.value = null
   try {
@@ -28,11 +51,15 @@ async function fetchDetail() {
   }
 }
 
+// ✅ [FIX #4] Timer ID disimpan agar bisa di-clear sebelum reset
+let addedTimer = null
+
 async function handleKeranjang() {
   if (!isLoggedIn.value) {
     showLoginAlert.value = true
     return
   }
+  cartLoading.value = true
   try {
     await api.post('/cart', { book_id: book.value.id, quantity: 1 })
     Swal.fire({
@@ -44,8 +71,12 @@ async function handleKeranjang() {
       toast: true,
       position: 'top-end',
     })
+
+    // ✅ Clear timer lama sebelum set yang baru
+    clearTimeout(addedTimer)
     addedToCart.value = true
-    setTimeout(() => (addedToCart.value = false), 2000)
+    addedTimer = setTimeout(() => (addedToCart.value = false), 2000)
+
     window.dispatchEvent(new Event('cart-updated'))
   } catch (e) {
     Swal.fire({
@@ -57,6 +88,8 @@ async function handleKeranjang() {
       toast: true,
       position: 'top-end',
     })
+  } finally {
+    cartLoading.value = false
   }
 }
 
@@ -78,10 +111,19 @@ function goToRegister() {
   router.push('/register')
 }
 
+// ✅ [FIX #5] Base URL dari env variable, tidak hardcoded
+const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
+
 const coverSrc = computed(() => {
   if (!book.value?.cover) return null
   if (book.value.cover.startsWith('http')) return book.value.cover
-  return `/storage/${book.value.cover}`
+  return `${storageBase}/${book.value.cover}`
+})
+
+// ✅ [FIX #1] Sanitasi HTML deskripsi untuk mencegah XSS
+const safeDescription = computed(() => {
+  if (!book.value?.description) return 'Tidak ada deskripsi.'
+  return DOMPurify.sanitize(book.value.description)
 })
 
 const stokLabel = computed(() => {
@@ -90,8 +132,6 @@ const stokLabel = computed(() => {
   if (s <= 5) return { text: `Sisa ${s} buku`, cls: 'bg-orange-100 text-orange-600' }
   return { text: `${s} tersedia`, cls: 'bg-green-100 text-green-600' }
 })
-
-onMounted(fetchDetail)
 </script>
 
 <template>
@@ -133,19 +173,23 @@ onMounted(fetchDetail)
             <span class="text-blue-600 font-medium">Daftar sekarang!</span>
           </p>
           <div class="flex flex-col gap-2">
+            <!-- ✅ [FIX #6] type="button" agar tidak trigger submit jika di dalam form -->
             <button
+              type="button"
               @click="goToLogin"
               class="w-full py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 active:scale-95 transition-all"
             >
               🔑 Login Sekarang
             </button>
             <button
+              type="button"
               @click="goToRegister"
               class="w-full py-2.5 bg-blue-50 text-blue-600 rounded-xl font-semibold text-sm hover:bg-blue-100 active:scale-95 transition-all"
             >
               📝 Daftar Akun Baru
             </button>
             <button
+              type="button"
               @click="showLoginAlert = false"
               class="w-full py-2 text-gray-400 text-sm hover:text-gray-600 transition"
             >
@@ -159,6 +203,7 @@ onMounted(fetchDetail)
     <!-- BACK -->
     <div class="relative max-w-5xl mx-auto px-6 pt-8">
       <button
+        type="button"
         @click="router.back()"
         class="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 transition group"
       >
@@ -203,6 +248,7 @@ onMounted(fetchDetail)
       <p class="text-5xl mb-4">📭</p>
       <h2 class="text-lg font-semibold text-gray-700">{{ error }}</h2>
       <button
+        type="button"
         @click="router.back()"
         class="mt-6 px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition"
       >
@@ -261,9 +307,10 @@ onMounted(fetchDetail)
               <h2 class="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">
                 Deskripsi
               </h2>
+              <!-- ✅ [FIX #1] Pakai safeDescription yang sudah disanitasi DOMPurify -->
               <div
                 class="text-gray-600 text-sm leading-relaxed prose prose-sm max-w-none"
-                v-html="book.description ?? 'Tidak ada deskripsi.'"
+                v-html="safeDescription"
               ></div>
             </div>
             <div class="grid grid-cols-2 gap-3 mb-8">
@@ -278,8 +325,9 @@ onMounted(fetchDetail)
             </div>
 
             <div class="mt-auto flex items-center gap-3 flex-wrap">
-              <!-- Tombol Beli (existing) -->
+              <!-- Tombol Beli -->
               <button
+                type="button"
                 @click="handleBeli"
                 :disabled="book.stock === 0"
                 :class="[
@@ -292,21 +340,45 @@ onMounted(fetchDetail)
                 {{ book.stock === 0 ? 'Stok Habis' : '🛒 Beli Buku' }}
               </button>
 
-              <!-- ✅ Tombol Keranjang -->
+              <!-- Tombol Keranjang + Spinner -->
               <button
+                type="button"
                 @click="handleKeranjang"
-                :disabled="book.stock === 0"
+                :disabled="book.stock === 0 || cartLoading"
                 :class="[
                   'px-5 py-3 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center gap-2 border',
                   book.stock === 0
                     ? 'border-gray-200 text-gray-300 cursor-not-allowed'
-                    : addedToCart
-                      ? 'border-green-400 bg-green-50 text-green-600'
-                      : 'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-400 active:scale-95',
+                    : cartLoading
+                      ? 'border-blue-200 bg-blue-50 text-blue-400 cursor-wait'
+                      : addedToCart
+                        ? 'border-green-400 bg-green-50 text-green-600'
+                        : 'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-400 active:scale-95',
                 ]"
               >
-                <span>{{ addedToCart ? '✅' : '🧺' }}</span>
-                {{ addedToCart ? 'Ditambahkan!' : 'Keranjang' }}
+                <!-- Spinner -->
+                <svg
+                  v-if="cartLoading"
+                  class="w-4 h-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  />
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                  />
+                </svg>
+                <span v-else>{{ addedToCart ? '✅' : '🧺' }}</span>
+                {{ cartLoading ? 'Menambahkan...' : addedToCart ? 'Ditambahkan!' : 'Keranjang' }}
               </button>
 
               <p v-if="!isLoggedIn" class="text-xs text-gray-400 flex items-center gap-1">
