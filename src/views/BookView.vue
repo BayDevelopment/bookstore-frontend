@@ -18,7 +18,6 @@ const sentinelEl = ref(null)
 let observer = null
 let searchTimer = null
 
-// ✅ [FIX #1] Base URL dari env variable, tidak hardcoded
 const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
 
 function coverUrl(cover) {
@@ -28,10 +27,12 @@ function coverUrl(cover) {
 }
 
 async function fetchBooks(reset = false) {
-  if (loading.value) return
+  // ✅ FIX: guard hanya cek loading, tidak blok reset
+  if (loading.value && !reset) return
   if (!reset && page.value > lastPage.value) return
 
   loading.value = true
+  if (reset) firstLoad.value = true // ✅ set di sini, bukan di resetAndFetch
 
   try {
     const { data } = await api.get('/books', {
@@ -64,7 +65,6 @@ async function fetchBooks(reset = false) {
 
 function setupObserver() {
   if (observer) observer.disconnect()
-
   observer = new IntersectionObserver(
     ([entry]) => {
       if (
@@ -82,7 +82,7 @@ function setupObserver() {
 }
 
 function resetAndFetch() {
-  firstLoad.value = true
+  // ✅ FIX: tidak set firstLoad di sini, biarkan fetchBooks yang handle
   books.value = []
   page.value = 1
   lastPage.value = 1
@@ -91,18 +91,14 @@ function resetAndFetch() {
 
 watch(search, () => {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    resetAndFetch()
-  }, 500)
+  searchTimer = setTimeout(() => resetAndFetch(), 500)
 })
 
 watch(
   () => route.query.q,
   (newQ) => {
     const q = newQ ?? ''
-    if (q !== search.value) {
-      search.value = q
-    }
+    if (q !== search.value) search.value = q
   },
 )
 
@@ -117,7 +113,6 @@ watch(
 onMounted(async () => {
   if (route.query.q) search.value = route.query.q
   if (route.query.category) selectedCategory.value = route.query.category
-
   await fetchBooks(true)
   await nextTick()
   setupObserver()
@@ -128,9 +123,16 @@ onUnmounted(() => {
   clearTimeout(searchTimer)
 })
 
-// ✅ [FIX #2] hasMore & isEmpty jadi computed, lebih idiomatis Vue
 const hasMore = computed(() => page.value <= lastPage.value)
 const isEmpty = computed(() => !loading.value && !firstLoad.value && books.value.length === 0)
+
+// ✅ FIX: harga minimum yang aman dari NaN
+function minPrice(book) {
+  const prices = []
+  if (book.has_print && book.price_print != null) prices.push(Number(book.price_print))
+  if (book.has_pdf && book.price_pdf != null) prices.push(Number(book.price_pdf))
+  return prices.length ? Math.min(...prices) : null
+}
 </script>
 
 <template>
@@ -202,7 +204,6 @@ const isEmpty = computed(() => !loading.value && !firstLoad.value && books.value
 
       <!-- ADA DATA -->
       <div v-else-if="books.length > 0" class="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <!-- ✅ [FIX #3] Seluruh card bisa diklik, bukan hanya teks "Lihat Detail" -->
         <router-link
           v-for="book in books"
           :key="book.id"
@@ -219,15 +220,37 @@ const isEmpty = computed(() => !loading.value && !firstLoad.value && books.value
             />
             <div v-else class="w-full h-40 flex items-center justify-center text-4xl">📚</div>
           </div>
+
           <h2
             class="font-semibold text-gray-800 text-sm mt-3 line-clamp-2 group-hover:text-blue-600 transition"
           >
             {{ book.title }}
           </h2>
           <p class="text-gray-400 text-xs mt-1 line-clamp-1">{{ book.author }}</p>
+
+          <!-- ✅ FIX: harga aman dari NaN -->
           <p class="text-blue-600 font-semibold mt-2 text-sm">
-            Rp {{ Number(book.price).toLocaleString('id-ID') }}
+            <template v-if="minPrice(book) !== null">
+              {{ book.has_print && book.has_pdf ? 'Mulai ' : '' }}Rp
+              {{ minPrice(book).toLocaleString('id-ID') }}
+            </template>
+            <template v-else>-</template>
           </p>
+
+          <!-- Badge tipe -->
+          <div class="flex gap-1 mt-1.5 flex-wrap">
+            <span
+              v-if="book.has_print"
+              class="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded-full font-semibold"
+              >📦 Cetak</span
+            >
+            <span
+              v-if="book.has_pdf"
+              class="text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded-full font-semibold"
+              >💻 PDF</span
+            >
+          </div>
+
           <span class="mt-2 text-xs text-gray-400 group-hover:text-blue-500 transition block">
             Lihat Detail →
           </span>
@@ -285,9 +308,8 @@ const isEmpty = computed(() => !loading.value && !firstLoad.value && books.value
       <div ref="sentinelEl" class="h-4 mt-4"></div>
 
       <!-- End of list -->
-      <!-- ✅ [FIX #2] hasMore tanpa () karena sudah computed -->
       <div
-        v-if="!hasMore && !loading && books.length > 0"
+        v-if="!hasMore && !loading && books.value > 0"
         class="text-center text-gray-400 text-sm py-8"
       >
         ✅ Semua buku sudah ditampilkan

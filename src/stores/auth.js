@@ -5,8 +5,17 @@ const USER_KEY = 'user'
 const LAST_ACTIVITY_KEY = 'last_activity'
 const INACTIVITY_LIMIT = 5 * 60 * 60 * 1000
 
+// ✅ Helper: JSON.parse aman tanpa crash
+function safeParseJSON(val) {
+  try {
+    return JSON.parse(val)
+  } catch {
+    return null
+  }
+}
+
 const token = ref(localStorage.getItem(TOKEN_KEY))
-const userData = ref(JSON.parse(localStorage.getItem(USER_KEY) || 'null'))
+const userData = ref(safeParseJSON(localStorage.getItem(USER_KEY)))
 
 let inactivityTimer = null
 
@@ -31,7 +40,9 @@ export const useAuth = () => {
     }
   }
 
+  // ✅ Stop dulu sebelum pasang — cegah listener duplikat
   const startActivityListeners = () => {
+    stopActivityListeners()
     ACTIVITY_EVENTS.forEach((event) => {
       window.addEventListener(event, updateActivity, { passive: true })
     })
@@ -70,9 +81,9 @@ export const useAuth = () => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     localStorage.removeItem(LAST_ACTIVITY_KEY)
-    localStorage.removeItem('temp_email') // ✅ bersihkan email register
-    localStorage.removeItem('fakultas_list') // ✅ bersihkan cache
-    localStorage.removeItem('prodi_list') // ✅ bersihkan cache
+    localStorage.removeItem('temp_email')
+    localStorage.removeItem('fakultas_list')
+    localStorage.removeItem('prodi_list')
 
     stopActivityListeners()
     clearInterval(inactivityTimer)
@@ -82,15 +93,15 @@ export const useAuth = () => {
     const storedToken = localStorage.getItem(TOKEN_KEY)
     if (!storedToken) return
 
-    // ✅ Load userData dari localStorage saat init
-    const storedUser = JSON.parse(localStorage.getItem(USER_KEY) || 'null')
+    // ✅ safeParseJSON — tidak crash walau localStorage corrupt
+    const storedUser = safeParseJSON(localStorage.getItem(USER_KEY))
     if (!storedUser) {
       clearAuth()
       return
     }
 
     token.value = storedToken
-    userData.value = storedUser // ✅ pastikan userData ter-load
+    userData.value = storedUser
 
     if (isSessionExpired()) {
       clearAuth()
@@ -102,7 +113,6 @@ export const useAuth = () => {
     startInactivityWatcher()
   }
 
-  // ✅ Update userData di localStorage (misal setelah update profil)
   const updateUser = (newUser) => {
     userData.value = { ...userData.value, ...newUser }
     localStorage.setItem(USER_KEY, JSON.stringify(userData.value))

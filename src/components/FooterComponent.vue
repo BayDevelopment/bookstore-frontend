@@ -1,11 +1,7 @@
-<script setup>
-import { computed } from 'vue'
+<script setup lang="js">
 import logo from '@/assets/images/logo-nav.png'
 
-// Menggunakan computed untuk tahun agar selalu update & aman
-const currentYear = computed(() => new Date().getFullYear())
-
-// Data statis diletakkan di script agar template tetap bersih
+const currentYear = new Date().getFullYear()
 const developerName = 'Bayu Albar Ladici'
 const brandName = 'Bookstore Alkhairiyah'
 </script>

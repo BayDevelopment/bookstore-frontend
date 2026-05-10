@@ -8,28 +8,28 @@ import Swal from 'sweetalert2'
 const router = useRouter()
 const cartItems = ref([])
 const loading = ref(true)
-const isUpdating = ref(false) // Mencegah spam click
-
-// Ambil Base URL dari .env
-const STORAGE_URL = import.meta.env.VITE_STORAGE_URL
+const isUpdating = ref(false)
 
 async function fetchCart() {
   loading.value = true
   try {
     const { data } = await api.get('/cart')
+
+    // ✅ Backend sudah return: id, qty, type, price, subtotal, book{}
     cartItems.value = data.data.map((item) => ({
       cartId: item.id,
-      id: item.book_id,
+      type: item.type,
+      qty: item.qty,
+      price: Number(item.price ?? 0), // ✅ pakai price dari backend (sudah via priceFor())
+
+      // ✅ Cover sudah full URL dari backend (asset('storage/...')), tidak perlu append lagi
+      image: item.book.cover ?? null,
+
+      // Book info
+      id: item.book.id,
       title: item.book.title,
       author: item.book.author,
-      price: Number(item.book.price),
-      qty: item.qty,
       stock: item.book.stock,
-      image: item.book.cover?.startsWith('http')
-        ? item.book.cover
-        : item.book.cover
-          ? `${STORAGE_URL}/${item.book.cover}`
-          : null,
     }))
   } catch (e) {
     console.error('Gagal fetch cart:', e.response?.data ?? e.message)
@@ -38,9 +38,9 @@ async function fetchCart() {
   }
 }
 
-const totalPrice = computed(() => {
-  return cartItems.value.reduce((total, item) => total + item.price * item.qty, 0)
-})
+const totalPrice = computed(() =>
+  cartItems.value.reduce((sum, item) => sum + item.price * item.qty, 0),
+)
 
 async function removeItem(cartId) {
   const confirm = await Swal.fire({
@@ -60,8 +60,6 @@ async function removeItem(cartId) {
   try {
     await api.delete(`/cart/${cartId}`)
     cartItems.value = cartItems.value.filter((item) => item.cartId !== cartId)
-
-    // Trigger event untuk navbar (jika ada badge cart)
     window.dispatchEvent(new Event('cart-updated'))
 
     Swal.fire({
@@ -78,12 +76,13 @@ async function removeItem(cartId) {
 }
 
 async function updateQty(item, type) {
-  if (isUpdating.value) return // Kunci jika sedang proses
+  if (isUpdating.value) return
+  if (item.type === 'pdf') return // ✅ PDF tidak bisa diubah qty
 
   const newQty = type === 'inc' ? item.qty + 1 : item.qty - 1
 
   if (newQty < 1) return
-  if (type === 'inc' && newQty > item.stock) {
+  if (newQty > item.stock) {
     Swal.fire({
       icon: 'warning',
       title: 'Stok Terbatas',
@@ -98,13 +97,13 @@ async function updateQty(item, type) {
 
   isUpdating.value = true
   try {
-    await api.patch(`/cart/${item.cartId}`, { quantity: newQty })
-    item.qty = newQty // Update UI secara lokal
+    const { data } = await api.patch(`/cart/${item.cartId}`, { quantity: newQty })
+    // ✅ Update dari response backend, bukan asumsi lokal
+    item.qty = data.data.qty
+    item.price = Number(data.data.price ?? item.price)
     window.dispatchEvent(new Event('cart-updated'))
-  } catch (e) {
-    console.error('Gagal update qty:', e.response?.data ?? e.message)
-    // Rollback jika gagal
-    fetchCart()
+  } catch {
+    fetchCart() // fallback: re-fetch jika gagal
   } finally {
     isUpdating.value = false
   }
@@ -120,7 +119,6 @@ onMounted(fetchCart)
 
 <template>
   <div class="relative overflow-hidden min-h-screen bg-gray-50/50">
-    <!-- DECORATION -->
     <div class="absolute inset-0 grid-bg pointer-events-none"></div>
 
     <div class="relative max-w-7xl mx-auto px-6 py-12">
@@ -176,19 +174,34 @@ onMounted(fetchCart)
               </h2>
               <p class="text-gray-500 text-xs md:text-sm italic mb-2">{{ item.author }}</p>
 
+              <!-- Badge Tipe -->
+              <span
+                class="inline-block text-xs font-semibold px-2 py-0.5 rounded-full"
+                :class="
+                  item.type === 'print'
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'bg-indigo-50 text-indigo-600'
+                "
+              >
+                {{ item.type === 'print' ? '📦 Buku Cetak' : '💻 PDF Digital' }}
+              </span>
+
               <div class="flex flex-wrap items-center justify-between gap-4 mt-4">
-                <!-- QUANTITY CONTROLS -->
-                <div class="flex items-center bg-gray-100 rounded-xl p-1 border border-gray-200">
+                <!-- QTY CONTROL — hanya untuk print -->
+                <div
+                  v-if="item.type === 'print'"
+                  class="flex items-center bg-gray-100 rounded-xl p-1 border border-gray-200"
+                >
                   <button
                     @click="updateQty(item, 'dec')"
                     :disabled="item.qty <= 1 || isUpdating"
                     class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:text-blue-600 disabled:opacity-30 transition shadow-sm"
                   >
-                    -
+                    −
                   </button>
-                  <span class="px-4 font-bold text-gray-700 min-w-[40px] text-center">{{
-                    item.qty
-                  }}</span>
+                  <span class="px-4 font-bold text-gray-700 min-w-[40px] text-center">
+                    {{ item.qty }}
+                  </span>
                   <button
                     @click="updateQty(item, 'inc')"
                     :disabled="item.qty >= item.stock || isUpdating"
@@ -198,16 +211,25 @@ onMounted(fetchCart)
                   </button>
                 </div>
 
+                <!-- PDF — qty tetap 1, tidak ada kontrol -->
+                <div v-else class="flex items-center gap-2">
+                  <span class="text-xs text-indigo-400 font-medium">Lisensi Digital × 1</span>
+                </div>
+
                 <p class="text-blue-600 font-black text-lg">
                   Rp {{ (item.price * item.qty).toLocaleString('id-ID') }}
                 </p>
               </div>
-              <p class="text-[10px] text-gray-400 mt-2 uppercase tracking-wider font-semibold">
-                Stok: {{ item.stock }}
+
+              <p
+                v-if="item.type === 'print'"
+                class="text-[10px] text-gray-400 mt-2 uppercase tracking-wider font-semibold"
+              >
+                Stok Tersedia: {{ item.stock }}
               </p>
             </div>
 
-            <!-- DELETE ACTION -->
+            <!-- DELETE -->
             <button
               @click="removeItem(item.cartId)"
               class="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all shrink-0"
@@ -232,7 +254,7 @@ onMounted(fetchCart)
                 <span>Subtotal</span>
                 <span>Rp {{ totalPrice.toLocaleString('id-ID') }}</span>
               </div>
-              <div class="flex justify-between text-gray-500 font-medium text-green-600">
+              <div class="flex justify-between font-medium text-green-600">
                 <span>Biaya Admin</span>
                 <span>Gratis</span>
               </div>
@@ -291,7 +313,6 @@ onMounted(fetchCart)
     linear-gradient(to bottom, rgba(59, 130, 246, 0.05) 1px, transparent 1px);
   background-size: 32px 32px;
 }
-
 .grid-bg::after {
   content: '';
   position: absolute;
@@ -304,7 +325,6 @@ onMounted(fetchCart)
   );
   animation: shimmer 12s linear infinite;
 }
-
 @keyframes shimmer {
   0% {
     transform: translateX(-100%);
@@ -313,13 +333,11 @@ onMounted(fetchCart)
     transform: translateX(100%);
   }
 }
-
 .skeleton {
   background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
   background-size: 200% 100%;
   animation: bone 1.5s infinite linear;
 }
-
 @keyframes bone {
   from {
     background-position: 200% 0;

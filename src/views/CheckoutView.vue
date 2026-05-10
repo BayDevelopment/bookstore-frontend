@@ -10,31 +10,30 @@ const book = ref(null)
 const cartItems = ref([])
 const loading = ref(true)
 const error = ref(null)
+
 const quantity = ref(1)
 const paymentMethods = ref([])
 const selectedMethod = ref(null)
 const orderLoading = ref(false)
 const orderError = ref(null)
 
+// ✅ Success state
+const showSuccess = ref(false)
+const successOrderId = ref(null)
+
 const token = localStorage.getItem('token')
 const isFromCart = computed(() => !route.query.book_id)
+const bookType = computed(() => route.query.type ?? 'print')
+const isPdf = computed(() => bookType.value === 'pdf')
 const copied = ref(false)
-
-// ✅ [FIX #1] Base URL dari env variable, tidak hardcoded
-const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
-
-// ✅ [FIX #2] maxQty pakai konstanta, tidak hardcoded angka
 const MAX_QTY = 10
-const maxQty = computed(() => Math.min(book.value?.stock ?? 1, MAX_QTY))
 
-// ✅ [FIX #3] copyNorek dengan fallback untuk HTTP / browser lama
-async function copyNorek() {
+const copyNorek = async () => {
   const norek = selectedMethod.value?.account_number
   if (!norek) return
   try {
     await navigator.clipboard.writeText(norek)
   } catch {
-    // fallback untuk browser yang tidak support clipboard API
     const el = document.createElement('textarea')
     el.value = norek
     document.body.appendChild(el)
@@ -43,15 +42,27 @@ async function copyNorek() {
     document.body.removeChild(el)
   }
   copied.value = true
-  setTimeout(() => (copied.value = false), 2000)
+  setTimeout(() => (copied.value = false), 1500)
 }
 
-onMounted(async () => {
-  if (!token) {
-    router.push('/login')
-    return
-  }
+const bookPrice = computed(() => {
+  if (!book.value) return 0
+  return isPdf.value ? Number(book.value.price_pdf ?? 0) : Number(book.value.price_print ?? 0)
+})
 
+const maxQty = computed(() => {
+  if (!book.value || isPdf.value) return 1
+  return Math.min(book.value.stock ?? 1, MAX_QTY)
+})
+
+const coverSrc = computed(() => {
+  if (!book.value?.cover) return null
+  if (book.value.cover.startsWith('http')) return book.value.cover
+  return `${import.meta.env.VITE_STORAGE_URL ?? '/storage'}/${book.value.cover}`
+})
+
+onMounted(async () => {
+  if (!token) return router.push('/login')
   try {
     if (isFromCart.value) {
       const [cartRes, methodRes] = await Promise.all([
@@ -60,18 +71,13 @@ onMounted(async () => {
       ])
       cartItems.value = cartRes.data.data.map((item) => ({
         cartId: item.id,
-        book_id: item.book_id,
+        id: item.book.id,
         title: item.book.title,
         author: item.book.author,
-        price: Number(item.book.price),
+        type: item.type,
+        price: Number(item.price ?? 0),
         qty: item.qty,
-        stock: item.book.stock,
-        // ✅ [FIX #1] pakai storageBase
-        image: item.book.cover?.startsWith('http')
-          ? item.book.cover
-          : item.book.cover
-            ? `${storageBase}/${item.book.cover}`
-            : null,
+        image: item.book.cover ?? null,
       }))
       paymentMethods.value = methodRes.data.data ?? []
     } else {
@@ -82,39 +88,28 @@ onMounted(async () => {
       book.value = bookRes.data.data ?? bookRes.data
       paymentMethods.value = methodRes.data.data ?? []
     }
-
     if (paymentMethods.value.length > 0) selectedMethod.value = paymentMethods.value[0]
   } catch {
-    // ✅ [FIX #4] hapus (e) karena tidak dipakai — hindari ESLint warning
     error.value = 'Gagal memuat data.'
   } finally {
     loading.value = false
   }
 })
 
-// ✅ [FIX #1] coverSrc pakai storageBase
-const coverSrc = computed(() => {
-  const c = book.value?.cover
-  if (!c) return null
-  return c.startsWith('http') ? c : `${storageBase}/${c}`
-})
-
 const totalPrice = computed(() => {
-  if (isFromCart.value) {
-    return cartItems.value.reduce((sum, item) => sum + item.price * item.qty, 0)
-  }
-  return Number(book.value?.price ?? 0) * quantity.value
+  if (isFromCart.value) return cartItems.value.reduce((s, i) => s + i.price * i.qty, 0)
+  return bookPrice.value * (isPdf.value ? 1 : quantity.value)
 })
-
 const formattedTotal = computed(() => totalPrice.value.toLocaleString('id-ID'))
 const isCash = computed(() => selectedMethod.value?.code === 'cash')
 
-// ✅ [FIX #5] type="button" ditambahkan di template, fungsi tetap sama
 function increment() {
-  if (quantity.value < maxQty.value) quantity.value++
+  if (isPdf.value || quantity.value >= maxQty.value) return
+  quantity.value++
 }
 function decrement() {
-  if (quantity.value > 1) quantity.value--
+  if (isPdf.value || quantity.value <= 1) return
+  quantity.value--
 }
 
 async function handleOrder() {
@@ -124,33 +119,51 @@ async function handleOrder() {
   }
   orderLoading.value = true
   orderError.value = null
-
   try {
-    const payload = isFromCart.value
-      ? {
-          items: cartItems.value.map((i) => ({ book_id: i.book_id, quantity: i.qty })),
-          payment_method_id: selectedMethod.value.id,
-          from_cart: true,
-        }
-      : {
-          items: [{ book_id: book.value.id, quantity: quantity.value }],
-          payment_method_id: selectedMethod.value.id,
-        }
-
-    const { data } = await api.post('/orders', payload)
-    const orderId = data.data?.id ?? null
-
-    if (isFromCart.value) window.dispatchEvent(new Event('cart-updated'))
-
-    if (isCash.value) {
-      router.push(orderId ? `/orders/${orderId}` : '/orders')
+    let payload = {}
+    if (isFromCart.value) {
+      payload = {
+        payment_method_id: selectedMethod.value.id,
+        from_cart: true,
+        items: cartItems.value.map((i) => ({
+          cart_id: i.cartId,
+          book_id: i.id,
+          quantity: i.qty,
+          price: i.price,
+          type: i.type,
+        })),
+      }
     } else {
-      router.push({ path: '/orders', query: { new: orderId } })
+      payload = {
+        payment_method_id: selectedMethod.value.id,
+        items: [
+          {
+            book_id: book.value.id,
+            type: bookType.value,
+            quantity: isPdf.value ? 1 : quantity.value,
+            price: bookPrice.value,
+          },
+        ],
+      }
     }
+    const { data } = await api.post('/orders', payload)
+    successOrderId.value = data.data?.id ?? null
+    if (isFromCart.value) window.dispatchEvent(new Event('cart-updated'))
+    showSuccess.value = true // ✅ Tampil modal sukses
   } catch (e) {
-    orderError.value = e.response?.data?.message ?? 'Gagal membuat pesanan. Coba lagi.'
+    orderError.value = e.response?.data?.message ?? 'Gagal membuat pesanan.'
+  } finally {
     orderLoading.value = false
   }
+}
+
+function goToOrderDetail() {
+  showSuccess.value = false
+  router.push(successOrderId.value ? `/orders/${successOrderId.value}` : '/orders')
+}
+function goToOrders() {
+  showSuccess.value = false
+  router.push('/orders')
 }
 </script>
 
@@ -158,9 +171,98 @@ async function handleOrder() {
   <div class="relative min-h-screen overflow-hidden">
     <div class="absolute inset-0 pointer-events-none grid-bg"></div>
 
+    <!-- ✅ SUCCESS MODAL -->
+    <Transition name="fade">
+      <div v-if="showSuccess" class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+        <div
+          class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center animate-pop overflow-hidden"
+        >
+          <!-- Confetti dots dekoratif -->
+          <div
+            class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-green-400 via-blue-400 to-indigo-500"
+          ></div>
+
+          <!-- Lingkaran centang animasi -->
+          <div class="relative w-24 h-24 mx-auto mb-5">
+            <div class="absolute inset-0 bg-green-100 rounded-full animate-ping-slow"></div>
+            <div
+              class="relative w-24 h-24 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-xl shadow-green-200"
+            >
+              <svg
+                class="w-11 h-11 text-white checkmark"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </div>
+
+          <h2 class="text-2xl font-bold text-gray-900 mb-1">Pesanan Berhasil! 🎉</h2>
+          <p class="text-sm text-gray-400 mb-5">Terima kasih, pesananmu sudah kami terima.</p>
+
+          <!-- Ringkasan -->
+          <div class="bg-gray-50 rounded-2xl p-4 mb-4 text-left space-y-2.5">
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-400">Total Bayar</span>
+              <span class="font-bold text-blue-600">Rp {{ formattedTotal }}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-400">Metode</span>
+              <span class="font-semibold text-gray-700">{{ selectedMethod?.name }}</span>
+            </div>
+            <div v-if="successOrderId" class="flex justify-between text-sm">
+              <span class="text-gray-400">ID Pesanan</span>
+              <span class="font-mono font-bold text-gray-700">#{{ successOrderId }}</span>
+            </div>
+          </div>
+
+          <!-- Hint selanjutnya -->
+          <div
+            v-if="!isCash"
+            class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-5 flex gap-2 text-left"
+          >
+            <span class="text-base shrink-0">📤</span>
+            <p class="text-xs text-yellow-700 leading-relaxed">
+              Segera <span class="font-bold">upload bukti pembayaran</span> agar pesananmu bisa
+              diproses lebih cepat.
+            </p>
+          </div>
+          <div
+            v-else
+            class="bg-green-50 border border-green-200 rounded-xl p-3 mb-5 flex gap-2 text-left"
+          >
+            <span class="text-base shrink-0">🏛️</span>
+            <p class="text-xs text-green-700 leading-relaxed">
+              Datang ke <span class="font-bold">Bagian Akademik</span> dan tunjukkan ID pesanan
+              untuk menyelesaikan pembayaran.
+            </p>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <button
+              @click="goToOrderDetail"
+              class="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition active:scale-95"
+            >
+              {{ isCash ? '📦 Lihat Detail Pesanan' : '📤 Upload Bukti Sekarang' }}
+            </button>
+            <button
+              @click="goToOrders"
+              class="w-full py-2.5 text-gray-500 text-sm hover:text-gray-700 transition"
+            >
+              Lihat Semua Pesanan →
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <div class="relative max-w-xl mx-auto px-6 pt-8 pb-16">
-      <!-- BACK -->
-      <!-- ✅ [FIX #5] type="button" pada semua tombol -->
       <button
         type="button"
         @click="router.back()"
@@ -177,10 +279,8 @@ async function handleOrder() {
         </svg>
         Kembali
       </button>
-
       <h1 class="text-2xl font-bold text-gray-900 mb-6">🛒 Checkout</h1>
 
-      <!-- SKELETON -->
       <div v-if="loading" class="space-y-4">
         <div class="bg-white/80 rounded-2xl p-5 space-y-4">
           <div class="skeleton h-4 rounded w-1/2"></div>
@@ -189,7 +289,6 @@ async function handleOrder() {
         </div>
       </div>
 
-      <!-- ERROR -->
       <div v-else-if="error" class="flex flex-col items-center py-24 text-center">
         <p class="text-4xl mb-3">⚠️</p>
         <p class="text-gray-600">{{ error }}</p>
@@ -203,7 +302,7 @@ async function handleOrder() {
       </div>
 
       <template v-else>
-        <!-- CARD BUKU — dari keranjang -->
+        <!-- BUKU dari keranjang -->
         <div
           v-if="isFromCart"
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4"
@@ -225,7 +324,16 @@ async function handleOrder() {
               <div class="flex-1 min-w-0">
                 <p class="font-semibold text-sm text-gray-800 truncate">{{ item.title }}</p>
                 <p class="text-xs text-gray-400">{{ item.author }}</p>
-                <p class="text-blue-600 text-sm font-semibold">
+                <span
+                  class="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+                  :class="
+                    item.type === 'pdf'
+                      ? 'bg-indigo-100 text-indigo-600'
+                      : 'bg-blue-100 text-blue-600'
+                  "
+                  >{{ item.type === 'pdf' ? '💻 PDF' : '📦 Cetak' }}</span
+                >
+                <p class="text-blue-600 text-sm font-semibold mt-1">
                   Rp {{ item.price.toLocaleString('id-ID') }} × {{ item.qty }}
                 </p>
               </div>
@@ -233,7 +341,7 @@ async function handleOrder() {
           </div>
         </div>
 
-        <!-- CARD BUKU — beli langsung -->
+        <!-- BUKU beli langsung -->
         <div
           v-else
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4"
@@ -254,17 +362,24 @@ async function handleOrder() {
             <div class="flex-1 min-w-0">
               <p class="font-bold text-gray-800 truncate">{{ book.title }}</p>
               <p class="text-sm text-gray-500">{{ book.author }}</p>
+              <span
+                class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                :class="isPdf ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-100 text-blue-600'"
+                >{{ isPdf ? '💻 PDF Digital' : '📦 Buku Cetak' }}</span
+              >
               <p class="text-blue-600 font-bold mt-1">
-                Rp {{ Number(book.price).toLocaleString('id-ID') }}
-                <span class="text-xs text-gray-400 font-normal">/ buku</span>
+                Rp {{ bookPrice.toLocaleString('id-ID') }}
+                <span class="text-xs text-gray-400 font-normal"
+                  >/ {{ isPdf ? 'lisensi' : 'buku' }}</span
+                >
               </p>
             </div>
           </div>
         </div>
 
-        <!-- JUMLAH BUKU — hanya untuk beli langsung -->
+        <!-- QTY print only -->
         <div
-          v-if="!isFromCart"
+          v-if="!isFromCart && !isPdf"
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4"
         >
           <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
@@ -289,6 +404,20 @@ async function handleOrder() {
               +
             </button>
             <span class="text-xs text-gray-400 ml-2">Stok tersedia: {{ book?.stock }}</span>
+          </div>
+        </div>
+
+        <!-- PDF info -->
+        <div
+          v-if="!isFromCart && isPdf"
+          class="bg-indigo-50 rounded-2xl border border-indigo-100 p-4 mb-4 flex items-center gap-3"
+        >
+          <span class="text-2xl">💻</span>
+          <div>
+            <p class="text-sm font-semibold text-indigo-700">PDF Digital</p>
+            <p class="text-xs text-indigo-400 mt-0.5">
+              Lisensi akan langsung aktif setelah pesanan dikonfirmasi.
+            </p>
           </div>
         </div>
 
@@ -350,7 +479,7 @@ async function handleOrder() {
           </div>
         </div>
 
-        <!-- Detail Rekening Bank (muncul jika bukan cash) -->
+        <!-- DETAIL REKENING -->
         <transition name="slide-fade">
           <div
             v-if="selectedMethod && selectedMethod.code !== 'cash'"
@@ -361,24 +490,23 @@ async function handleOrder() {
             </p>
             <div class="space-y-2">
               <div class="flex justify-between items-center">
-                <span class="text-xs text-gray-500">Bank</span>
-                <span class="text-sm font-semibold text-gray-800">
-                  {{ selectedMethod.bank_name ?? selectedMethod.name }}
-                </span>
+                <span class="text-xs text-gray-500">Bank</span
+                ><span class="text-sm font-semibold text-gray-800">{{
+                  selectedMethod.bank_name ?? selectedMethod.name
+                }}</span>
               </div>
               <div class="flex justify-between items-center">
-                <span class="text-xs text-gray-500">Atas Nama</span>
-                <span class="text-sm font-semibold text-gray-800">
-                  {{ selectedMethod.account_name ?? '-' }}
-                </span>
+                <span class="text-xs text-gray-500">Atas Nama</span
+                ><span class="text-sm font-semibold text-gray-800">{{
+                  selectedMethod.account_name ?? '-'
+                }}</span>
               </div>
               <div class="flex justify-between items-center">
                 <span class="text-xs text-gray-500">No. Rekening</span>
                 <div class="flex items-center gap-2">
-                  <span class="text-sm font-bold text-blue-700 tracking-wider font-mono">
-                    {{ selectedMethod.account_number ?? '-' }}
-                  </span>
-                  <!-- ✅ [FIX #5] type="button" -->
+                  <span class="text-sm font-bold text-blue-700 tracking-wider font-mono">{{
+                    selectedMethod.account_number ?? '-'
+                  }}</span>
                   <button
                     v-if="selectedMethod.account_number"
                     type="button"
@@ -393,40 +521,43 @@ async function handleOrder() {
           </div>
         </transition>
 
-        <!-- RINGKASAN & CTA -->
+        <!-- RINGKASAN + TOMBOL ORDER -->
         <div class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5">
           <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
             Ringkasan
           </h2>
           <div class="space-y-2 mb-4">
-            <div v-if="!isFromCart" class="flex justify-between text-sm">
-              <span class="text-gray-500">Harga satuan</span>
-              <span class="text-gray-700"
-                >Rp {{ Number(book?.price).toLocaleString('id-ID') }}</span
-              >
-            </div>
-            <div v-if="!isFromCart" class="flex justify-between text-sm">
-              <span class="text-gray-500">Jumlah</span>
-              <span class="text-gray-700">{{ quantity }} buku</span>
-            </div>
-            <div v-if="isFromCart" class="flex justify-between text-sm">
-              <span class="text-gray-500">Total item</span>
-              <span class="text-gray-700">{{ cartItems.length }} buku</span>
-            </div>
+            <template v-if="!isFromCart">
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Tipe</span
+                ><span class="text-gray-700">{{ isPdf ? '💻 PDF Digital' : '📦 Buku Cetak' }}</span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Harga satuan</span
+                ><span class="text-gray-700">Rp {{ bookPrice.toLocaleString('id-ID') }}</span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Jumlah</span
+                ><span class="text-gray-700">{{ isPdf ? '1 lisensi' : `${quantity} buku` }}</span>
+              </div>
+            </template>
+            <template v-else>
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Total item</span
+                ><span class="text-gray-700">{{ cartItems.length }} buku</span>
+              </div>
+            </template>
             <div class="flex justify-between text-sm">
-              <span class="text-gray-500">Metode</span>
-              <span class="text-gray-700">{{ selectedMethod?.name ?? '-' }}</span>
+              <span class="text-gray-500">Metode</span
+              ><span class="text-gray-700">{{ selectedMethod?.name ?? '-' }}</span>
             </div>
             <hr class="border-gray-100" />
             <div class="flex justify-between font-bold">
-              <span class="text-gray-800">Total</span>
-              <span class="text-blue-600 text-lg">Rp {{ formattedTotal }}</span>
+              <span class="text-gray-800">Total</span
+              ><span class="text-blue-600 text-lg">Rp {{ formattedTotal }}</span>
             </div>
           </div>
-
           <p v-if="orderError" class="text-xs text-red-500 mb-3 text-center">⚠ {{ orderError }}</p>
-
-          <!-- ✅ [FIX #5] type="button" -->
           <button
             type="button"
             @click="handleOrder"
@@ -493,5 +624,49 @@ async function handleOrder() {
 .slide-fade-leave-to {
   opacity: 0;
   transform: translateY(-6px);
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+.animate-pop {
+  animation: pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes pop {
+  from {
+    transform: scale(0.75);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-ping-slow {
+  animation: ping-slow 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes ping-slow {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+.checkmark {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: draw-check 0.45s ease 0.3s forwards;
+}
+@keyframes draw-check {
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 </style>

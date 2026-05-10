@@ -1,6 +1,6 @@
 <script setup>
-import NavBar from '@/components/navbar.vue'
-import Footer from '@/components/footer.vue'
+import NavBar from '@/components/NavbarComponent.vue'
+import Footer from '@/components/FooterComponent.vue'
 import { useAuth } from '@/stores/auth' // ✅ satu import saja
 import { onMounted } from 'vue'
 

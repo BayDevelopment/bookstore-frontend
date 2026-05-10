@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import axios from 'axios'
+import api from '@/lib/axios'
 import logo from '@/assets/images/logo-nav.png'
 import {
   MagnifyingGlassIcon,
@@ -32,7 +32,7 @@ const fetchCartCount = async () => {
     return
   }
   try {
-    const { data } = await axios.get('/api/cart/count')
+    const { data } = await api.get('/cart/count')
     cartCount.value = data.count ?? 0
   } catch {
     cartCount.value = 0
@@ -45,7 +45,7 @@ function onCartUpdated() {
 
 const handleLogout = async () => {
   try {
-    await axios.post('/api/logout')
+    await api.post('/logout')
   } catch {
     // optional: bisa kosong
   } finally {
@@ -83,6 +83,12 @@ onUnmounted(() => {
   document.removeEventListener('click', closeProfile)
   window.removeEventListener('cart-updated', onCartUpdated)
 })
+
+// ✅ Tambahkan fungsi ini
+function closeMobileMenu() {
+  isMobileProfileOpen.value = false
+  isOpen.value = false
+}
 </script>
 
 <template>

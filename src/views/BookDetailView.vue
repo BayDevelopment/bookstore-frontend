@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/lib/axios'
 import Swal from 'sweetalert2'
-import DOMPurify from 'dompurify' // ✅ [FIX #1] sanitasi XSS
+import DOMPurify from 'dompurify'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,15 +15,18 @@ const showLoginAlert = ref(false)
 const addedToCart = ref(false)
 const cartLoading = ref(false)
 
-// ✅ [FIX #2] Reaktif terhadap perubahan token (termasuk logout di tab lain)
+const selectedType = ref(null)
+
 const token = ref(localStorage.getItem('token'))
 const isLoggedIn = computed(() => !!token.value)
 
 function onStorageChange(e) {
-  if (e.key === 'token') {
-    token.value = e.newValue
-  }
+  if (e.key === 'token') token.value = e.newValue
 }
+
+let addedTimer = null
+// ✅ FIX: flag untuk cegah double-fetch yang benar
+let isFetching = false
 
 onMounted(() => {
   window.addEventListener('storage', onStorageChange)
@@ -32,36 +35,84 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('storage', onStorageChange)
-  // ✅ [FIX #3] Bersihkan timer saat component unmount
   clearTimeout(addedTimer)
 })
 
 async function fetchDetail() {
-  // ✅ Guard: jangan fetch ulang saat masih loading
-  if (loading.value && book.value !== null) return
+  // ✅ FIX: guard pakai flag terpisah, bukan kombinasi loading+book
+  if (isFetching) return
+  isFetching = true
   loading.value = true
   error.value = null
   try {
     const { data } = await api.get(`/books/${route.params.id}`)
     book.value = data.data ?? data
+
+    if (book.value.has_print) selectedType.value = 'print'
+    else if (book.value.has_pdf) selectedType.value = 'pdf'
   } catch (e) {
     error.value = e.response?.status === 404 ? 'Buku tidak ditemukan.' : 'Gagal memuat data.'
   } finally {
     loading.value = false
+    isFetching = false
   }
 }
 
-// ✅ [FIX #4] Timer ID disimpan agar bisa di-clear sebelum reset
-let addedTimer = null
+const selectedPrice = computed(() => {
+  if (!book.value) return 0
+  if (selectedType.value === 'print') return Number(book.value.price_print ?? 0)
+  if (selectedType.value === 'pdf') return Number(book.value.price_pdf ?? 0)
+  return 0
+})
+
+const stokLabel = computed(() => {
+  if (selectedType.value === 'pdf') {
+    return { text: 'Digital — Selalu Tersedia', cls: 'bg-blue-100 text-blue-600' }
+  }
+  const s = book.value?.stock ?? 0
+  if (s === 0) return { text: 'Stok Habis', cls: 'bg-red-100 text-red-600' }
+  if (s <= 5) return { text: `Sisa ${s} buku`, cls: 'bg-orange-100 text-orange-600' }
+  return { text: `${s} tersedia`, cls: 'bg-green-100 text-green-600' }
+})
+
+const canBuy = computed(() => {
+  if (!selectedType.value) return false
+  if (selectedType.value === 'pdf') return true
+  return (book.value?.stock ?? 0) > 0
+})
+
+const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
+
+const coverSrc = computed(() => {
+  if (!book.value?.cover) return null
+  if (book.value.cover.startsWith('http')) return book.value.cover
+  return `${storageBase}/${book.value.cover}`
+})
+
+const safeDescription = computed(() => {
+  if (!book.value?.description) return 'Tidak ada deskripsi.'
+  return DOMPurify.sanitize(book.value.description)
+})
 
 async function handleKeranjang() {
   if (!isLoggedIn.value) {
     showLoginAlert.value = true
     return
   }
+  if (!selectedType.value) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Pilih tipe buku terlebih dahulu',
+      timer: 2000,
+      showConfirmButton: false,
+      toast: true,
+      position: 'top-end',
+    })
+    return
+  }
   cartLoading.value = true
   try {
-    await api.post('/cart', { book_id: book.value.id, quantity: 1 })
+    await api.post('/cart', { book_id: book.value.id, quantity: 1, type: selectedType.value })
     Swal.fire({
       icon: 'success',
       title: 'Berhasil!',
@@ -71,12 +122,9 @@ async function handleKeranjang() {
       toast: true,
       position: 'top-end',
     })
-
-    // ✅ Clear timer lama sebelum set yang baru
     clearTimeout(addedTimer)
     addedToCart.value = true
     addedTimer = setTimeout(() => (addedToCart.value = false), 2000)
-
     window.dispatchEvent(new Event('cart-updated'))
   } catch (e) {
     Swal.fire({
@@ -98,47 +146,35 @@ function handleBeli() {
     showLoginAlert.value = true
     return
   }
-  router.push({ path: '/checkout', query: { book_id: book.value.id } })
+  if (!selectedType.value) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Pilih tipe buku terlebih dahulu',
+      timer: 2000,
+      showConfirmButton: false,
+      toast: true,
+      position: 'top-end',
+    })
+    return
+  }
+  router.push({ path: '/checkout', query: { book_id: book.value.id, type: selectedType.value } })
 }
 
 function goToLogin() {
   showLoginAlert.value = false
   router.push('/login')
 }
-
 function goToRegister() {
   showLoginAlert.value = false
   router.push('/register')
 }
-
-// ✅ [FIX #5] Base URL dari env variable, tidak hardcoded
-const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
-
-const coverSrc = computed(() => {
-  if (!book.value?.cover) return null
-  if (book.value.cover.startsWith('http')) return book.value.cover
-  return `${storageBase}/${book.value.cover}`
-})
-
-// ✅ [FIX #1] Sanitasi HTML deskripsi untuk mencegah XSS
-const safeDescription = computed(() => {
-  if (!book.value?.description) return 'Tidak ada deskripsi.'
-  return DOMPurify.sanitize(book.value.description)
-})
-
-const stokLabel = computed(() => {
-  const s = book.value?.stock ?? 0
-  if (s === 0) return { text: 'Stok Habis', cls: 'bg-red-100 text-red-600' }
-  if (s <= 5) return { text: `Sisa ${s} buku`, cls: 'bg-orange-100 text-orange-600' }
-  return { text: `${s} tersedia`, cls: 'bg-green-100 text-green-600' }
-})
 </script>
 
 <template>
   <div class="relative min-h-screen overflow-hidden">
     <div class="absolute inset-0 pointer-events-none grid-bg"></div>
 
-    <!-- MODAL — Harus Login -->
+    <!-- MODAL Login -->
     <Transition name="fade">
       <div
         v-if="showLoginAlert"
@@ -169,22 +205,20 @@ const stokLabel = computed(() => {
           <h2 class="text-lg font-bold text-gray-800 mb-1">Login Diperlukan</h2>
           <p class="text-sm text-gray-500 mb-6">
             Kamu harus <span class="font-medium text-gray-700">login</span> terlebih dahulu untuk
-            membeli buku ini. Belum punya akun?
-            <span class="text-blue-600 font-medium">Daftar sekarang!</span>
+            membeli buku ini.
           </p>
           <div class="flex flex-col gap-2">
-            <!-- ✅ [FIX #6] type="button" agar tidak trigger submit jika di dalam form -->
             <button
               type="button"
               @click="goToLogin"
-              class="w-full py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 active:scale-95 transition-all"
+              class="w-full py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition"
             >
               🔑 Login Sekarang
             </button>
             <button
               type="button"
               @click="goToRegister"
-              class="w-full py-2.5 bg-blue-50 text-blue-600 rounded-xl font-semibold text-sm hover:bg-blue-100 active:scale-95 transition-all"
+              class="w-full py-2.5 bg-blue-50 text-blue-600 rounded-xl font-semibold text-sm hover:bg-blue-100 transition"
             >
               📝 Daftar Akun Baru
             </button>
@@ -280,74 +314,113 @@ const stokLabel = computed(() => {
                   'inline-block px-3 py-1 rounded-full text-xs font-semibold',
                   stokLabel.cls,
                 ]"
-                >{{ stokLabel.text }}</span
               >
+                {{ stokLabel.text }}
+              </span>
             </div>
           </div>
 
           <!-- INFO -->
           <div class="flex-1 flex flex-col">
-            <div class="flex gap-2 mb-3">
-              <span
-                class="px-2.5 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full font-medium capitalize"
-                >{{ book.type }}</span
-              >
-            </div>
             <h1 class="text-2xl md:text-3xl font-bold text-gray-900 leading-tight mb-1">
               {{ book.title }}
             </h1>
             <p class="text-gray-500 text-sm mb-4">
               oleh <span class="text-gray-700 font-medium">{{ book.author }}</span>
             </p>
+
+            <!-- PILIH TIPE -->
+            <div class="mb-5">
+              <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                Pilih Tipe
+              </p>
+              <div class="flex gap-3 flex-wrap">
+                <button
+                  v-if="book.has_print"
+                  type="button"
+                  @click="selectedType = 'print'"
+                  :class="[
+                    'px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all',
+                    selectedType === 'print'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                  ]"
+                >
+                  📦 Cetak — Rp {{ Number(book.price_print).toLocaleString('id-ID') }}
+                </button>
+                <button
+                  v-if="book.has_pdf"
+                  type="button"
+                  @click="selectedType = 'pdf'"
+                  :class="[
+                    'px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all',
+                    selectedType === 'pdf'
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                  ]"
+                >
+                  💻 PDF Digital — Rp {{ Number(book.price_pdf).toLocaleString('id-ID') }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Harga -->
             <p class="text-blue-600 text-2xl font-bold mb-6">
-              Rp {{ Number(book.price).toLocaleString('id-ID') }}
+              Rp {{ selectedPrice.toLocaleString('id-ID') }}
             </p>
+
             <hr class="border-gray-100 mb-6" />
+
+            <!-- Deskripsi -->
             <div class="mb-6">
               <h2 class="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">
                 Deskripsi
               </h2>
-              <!-- ✅ [FIX #1] Pakai safeDescription yang sudah disanitasi DOMPurify -->
               <div
                 class="text-gray-600 text-sm leading-relaxed prose prose-sm max-w-none"
                 v-html="safeDescription"
               ></div>
             </div>
+
+            <!-- Info Grid -->
             <div class="grid grid-cols-2 gap-3 mb-8">
               <div class="bg-gray-50 rounded-xl px-4 py-3">
-                <p class="text-xs text-gray-400 mb-0.5">Stok</p>
-                <p class="text-sm font-semibold text-gray-700">{{ book.stock }} buku</p>
+                <p class="text-xs text-gray-400 mb-0.5">Stok Cetak</p>
+                <p class="text-sm font-semibold text-gray-700">
+                  {{ book.has_print ? `${book.stock} buku` : '-' }}
+                </p>
               </div>
               <div class="bg-gray-50 rounded-xl px-4 py-3">
-                <p class="text-xs text-gray-400 mb-0.5">Tipe</p>
-                <p class="text-sm font-semibold text-gray-700 capitalize">{{ book.type }}</p>
+                <p class="text-xs text-gray-400 mb-0.5">PDF Digital</p>
+                <p class="text-sm font-semibold text-gray-700">
+                  {{ book.has_pdf ? '✅ Tersedia' : '❌ Tidak Ada' }}
+                </p>
               </div>
             </div>
 
+            <!-- CTA -->
             <div class="mt-auto flex items-center gap-3 flex-wrap">
-              <!-- Tombol Beli -->
               <button
                 type="button"
                 @click="handleBeli"
-                :disabled="book.stock === 0"
+                :disabled="!canBuy"
                 :class="[
                   'px-8 py-3 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center gap-2',
-                  book.stock === 0
+                  !canBuy
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:scale-95',
+                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:scale-95',
                 ]"
               >
-                {{ book.stock === 0 ? 'Stok Habis' : '🛒 Beli Buku' }}
+                {{ !canBuy ? 'Stok Habis' : '🛒 Beli Sekarang' }}
               </button>
 
-              <!-- Tombol Keranjang + Spinner -->
               <button
                 type="button"
                 @click="handleKeranjang"
-                :disabled="book.stock === 0 || cartLoading"
+                :disabled="!canBuy || cartLoading"
                 :class="[
                   'px-5 py-3 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center gap-2 border',
-                  book.stock === 0
+                  !canBuy
                     ? 'border-gray-200 text-gray-300 cursor-not-allowed'
                     : cartLoading
                       ? 'border-blue-200 bg-blue-50 text-blue-400 cursor-wait'
@@ -356,7 +429,6 @@ const stokLabel = computed(() => {
                         : 'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-400 active:scale-95',
                 ]"
               >
-                <!-- Spinner -->
                 <svg
                   v-if="cartLoading"
                   class="w-4 h-4 animate-spin"

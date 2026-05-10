@@ -12,9 +12,16 @@ const { setAuth } = useAuth()
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
-const showPassword = ref(false) // ✅ [FIX] toggle show/hide password
+const showPassword = ref(false)
+const emailError = ref('')
+const passwordError = ref('')
 
-const resendEmail = async () => {
+function clearErrors() {
+  emailError.value = ''
+  passwordError.value = ''
+}
+
+async function resendEmail() {
   try {
     await api.post('/email/resend', { email: email.value })
     Swal.fire({
@@ -24,37 +31,29 @@ const resendEmail = async () => {
       confirmButtonColor: '#2563eb',
     })
   } catch (error) {
-    if (error.response?.status === 400) {
-      Swal.fire({
-        icon: 'info',
-        title: 'Email Sudah Aktif',
-        text: 'Silakan login.',
-        confirmButtonColor: '#2563eb',
-      })
-    } else {
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal',
-        text: 'Terjadi kesalahan, coba lagi.',
-        confirmButtonColor: '#2563eb',
-      })
-    }
+    Swal.fire({
+      icon: error.response?.status === 400 ? 'info' : 'error',
+      title: error.response?.status === 400 ? 'Email Sudah Aktif' : 'Gagal',
+      text: error.response?.status === 400 ? 'Silakan login.' : 'Terjadi kesalahan, coba lagi.',
+      confirmButtonColor: '#2563eb',
+    })
   }
 }
 
-const handleLogin = async () => {
+async function handleLogin() {
   if (loading.value) return
+  clearErrors()
 
-  // ✅ [FIX] Validasi input sebelum hit API
-  if (!email.value.trim() || !password.value) {
-    Swal.fire({
-      icon: 'warning',
-      title: 'Form Tidak Lengkap',
-      text: 'Email dan password wajib diisi.',
-      confirmButtonColor: '#2563eb',
-    })
-    return
+  let hasError = false
+  if (!email.value.trim()) {
+    emailError.value = 'Email wajib diisi.'
+    hasError = true
   }
+  if (!password.value) {
+    passwordError.value = 'Password wajib diisi.'
+    hasError = true
+  }
+  if (hasError) return
 
   loading.value = true
   try {
@@ -78,7 +77,25 @@ const handleLogin = async () => {
 
     router.push('/')
   } catch (error) {
-    if (error.response?.status === 403) {
+    const status = error.response?.status
+    const message = error.response?.data?.message ?? ''
+    const errors = error.response?.data?.errors ?? {}
+
+    if (status === 422) {
+      if (errors.email) emailError.value = errors.email[0]
+      if (errors.password) passwordError.value = errors.password[0]
+    } else if (status === 401) {
+      const isNotFound =
+        message.toLowerCase().includes('tidak terdaftar') ||
+        message.toLowerCase().includes('not found')
+
+      if (isNotFound) {
+        emailError.value = 'Email tidak terdaftar. Silakan daftar terlebih dahulu.'
+      } else {
+        emailError.value = 'Email atau password salah.'
+        passwordError.value = 'Email atau password salah.'
+      }
+    } else if (status === 403) {
       Swal.fire({
         icon: 'warning',
         title: 'Email Belum Diverifikasi',
@@ -90,14 +107,7 @@ const handleLogin = async () => {
       }).then((result) => {
         if (result.isConfirmed) resendEmail()
       })
-    } else if (error.response?.status === 401) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Login Gagal',
-        text: 'Email atau password salah.',
-        confirmButtonColor: '#2563eb',
-      })
-    } else if (error.response?.status === 429) {
+    } else if (status === 429) {
       Swal.fire({
         icon: 'warning',
         title: 'Terlalu Banyak Percobaan',
@@ -160,43 +170,55 @@ onMounted(() => {
         <p class="text-sm text-gray-400 mt-1">Silakan login untuk melanjutkan</p>
       </div>
 
-      <!-- Form -->
-      <form @submit.prevent="handleLogin" class="space-y-5">
+      <!-- ✅ Pakai form + novalidate: hilangkan warning, Enter support, tidak reload -->
+      <form class="space-y-5" @submit.prevent="handleLogin" novalidate>
         <!-- Email -->
         <div>
-          <label class="text-sm text-gray-600">Email</label>
+          <label class="text-sm text-gray-600" for="email">Email</label>
           <div class="relative group mt-1">
             <span
               class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition"
               >📧</span
             >
             <input
+              id="email"
               v-model="email"
               type="email"
-              placeholder="Email"
+              placeholder="email@contoh.com"
               autocomplete="email"
               :disabled="loading"
-              class="input-modern pl-10 disabled:opacity-50"
+              @input="emailError = ''"
+              :class="[
+                'input-modern pl-10 disabled:opacity-50',
+                emailError ? 'border-red-400 focus:ring-red-300' : '',
+              ]"
             />
           </div>
+          <p v-if="emailError" class="text-red-500 text-xs mt-1 pl-1 flex items-center gap-1">
+            <span>⚠</span> {{ emailError }}
+          </p>
         </div>
 
         <!-- Password -->
         <div>
-          <label class="text-sm text-gray-600">Password</label>
-          <!-- ✅ [FIX] Toggle show/hide password -->
+          <label class="text-sm text-gray-600" for="password">Password</label>
           <div class="relative group mt-1">
             <span
               class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition"
               >🔒</span
             >
             <input
+              id="password"
               v-model="password"
               :type="showPassword ? 'text' : 'password'"
               placeholder="Password"
               autocomplete="current-password"
               :disabled="loading"
-              class="input-modern pl-10 pr-10 disabled:opacity-50"
+              @input="passwordError = ''"
+              :class="[
+                'input-modern pl-10 pr-10 disabled:opacity-50',
+                passwordError ? 'border-red-400 focus:ring-red-300' : '',
+              ]"
             />
             <button
               type="button"
@@ -207,6 +229,9 @@ onMounted(() => {
               {{ showPassword ? '🙈' : '👁️' }}
             </button>
           </div>
+          <p v-if="passwordError" class="text-red-500 text-xs mt-1 pl-1 flex items-center gap-1">
+            <span>⚠</span> {{ passwordError }}
+          </p>
         </div>
 
         <!-- Forgot -->
@@ -216,7 +241,7 @@ onMounted(() => {
           </router-link>
         </div>
 
-        <!-- Button -->
+        <!-- ✅ type="submit" di dalam form — Enter otomatis trigger -->
         <button
           type="submit"
           :disabled="loading"
@@ -225,7 +250,6 @@ onMounted(() => {
           <svg
             v-if="loading"
             class="animate-spin h-5 w-5 text-white"
-            xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
           >
