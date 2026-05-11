@@ -62,7 +62,7 @@ onMounted(() => fetchCategories())
   <div class="bg-gray-50 min-h-screen" lang="id">
     <!-- HERO SECTION -->
     <section class="relative overflow-hidden bg-white border-b border-gray-100">
-      <div class="absolute inset-0 pointer-events-none grid-wave"></div>
+      <div class="absolute inset-0 pointer-events-none grid-bg"></div>
       <div
         class="relative max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-20 grid md:grid-cols-2 gap-8 md:gap-10 items-center"
       >
@@ -72,9 +72,86 @@ onMounted(() => fetchCategories())
           >
             <span class="text-blue-600">BookStore</span> Unival
           </h1>
-          <p class="text-base sm:text-lg text-gray-500 mb-6 sm:mb-8 max-w-lg mx-auto md:mx-0">
-            Temukan buku digital & cetak terbaik untuk menunjang pembelajaranmu di setiap fakultas.
+          <p class="text-base sm:text-lg text-gray-500 mb-5 sm:mb-6 max-w-lg mx-auto md:mx-0">
+            Temukan buku digital &amp; cetak terbaik untuk menunjang pembelajaranmu di setiap
+            fakultas.
           </p>
+
+          <!-- ✅ SDG SECTION BARU -->
+          <div class="sdg-wrapper">
+            <p class="sdg-label">Mendukung Tujuan Pembangunan Berkelanjutan</p>
+            <div class="sdg-cards">
+              <!-- SDG 4 -->
+              <div class="sdg-card sdg-4">
+                <div class="sdg-icon-wrap">
+                  <span class="sdg-number">4</span>
+                  <svg
+                    class="sdg-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  >
+                    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                    <path d="M2 17l10 5 10-5" />
+                    <path d="M2 12l10 5 10-5" />
+                  </svg>
+                </div>
+                <div class="sdg-text">
+                  <span class="sdg-title">Pendidikan Berkualitas</span>
+                  <span class="sdg-desc">Akses buku merata untuk semua mahasiswa</span>
+                </div>
+                <div class="sdg-glow"></div>
+              </div>
+
+              <!-- SDG 10 -->
+              <div class="sdg-card sdg-10">
+                <div class="sdg-icon-wrap">
+                  <span class="sdg-number">10</span>
+                  <svg
+                    class="sdg-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M8 12h8M12 8v8" />
+                  </svg>
+                </div>
+                <div class="sdg-text">
+                  <span class="sdg-title">Kurangi Kesenjangan</span>
+                  <span class="sdg-desc">Harga terjangkau, akses setara</span>
+                </div>
+                <div class="sdg-glow"></div>
+              </div>
+
+              <!-- SDG 12 -->
+              <div class="sdg-card sdg-12">
+                <div class="sdg-icon-wrap">
+                  <span class="sdg-number">12</span>
+                  <svg
+                    class="sdg-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  >
+                    <path
+                      d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"
+                    />
+                  </svg>
+                </div>
+                <div class="sdg-text">
+                  <span class="sdg-title">Konsumsi Bertanggung Jawab</span>
+                  <span class="sdg-desc">PDF digital, kurangi limbah kertas</span>
+                </div>
+                <div class="sdg-glow"></div>
+              </div>
+            </div>
+          </div>
+          <!-- ✅ END SDG SECTION -->
+
           <div class="flex gap-3 sm:gap-4 flex-wrap justify-center md:justify-start">
             <router-link
               to="/books"
@@ -92,12 +169,13 @@ onMounted(() => fetchCategories())
             </router-link>
           </div>
         </div>
+
         <div class="flex justify-center relative">
           <div
-            class="absolute w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] bg-blue-400/20 rounded-full blur-3xl animate-pulse"
+            class="absolute w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] bg-blue-400/20 rounded-full blur-3xl"
           ></div>
           <AcademicCapIcon
-            class="relative z-10 w-24 h-24 sm:w-32 sm:h-32 md:w-44 md:h-44 text-blue-600 animate-float"
+            class="relative z-10 w-24 h-24 sm:w-32 sm:h-32 md:w-44 md:h-44 text-blue-600"
           />
         </div>
       </div>
@@ -198,14 +276,12 @@ onMounted(() => fetchCategories())
               class="absolute inset-0 bg-gradient-to-b from-transparent to-blue-50/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
             ></div>
 
-            <!-- ICON -->
             <div
               class="icon-box relative z-10 mx-auto flex items-center justify-center rounded-2xl bg-blue-50 group-hover:bg-blue-100 transition-all duration-300 group-hover:scale-110"
             >
               <component :is="resolveIcon(category.icon)" class="icon-size text-blue-600" />
             </div>
 
-            <!-- TITLE -->
             <h3
               :title="category.name"
               class="category-title relative z-10 font-semibold text-gray-800 group-hover:text-blue-600 transition duration-300 leading-tight line-clamp-2 hyphens-auto"
@@ -226,6 +302,217 @@ onMounted(() => fetchCategories())
 </template>
 
 <style scoped>
+/* ════════════════════════════════════════
+   SDG SECTION
+════════════════════════════════════════ */
+.sdg-wrapper {
+  margin: 1.25rem 0 1.75rem;
+}
+
+.sdg-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 0.6rem;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .sdg-label {
+    text-align: left;
+  }
+}
+
+.sdg-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+@media (min-width: 480px) {
+  .sdg-cards {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+}
+
+.sdg-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem 0.55rem 0.55rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  overflow: hidden;
+  cursor: default;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sdg-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.12);
+}
+
+/* SDG 4 — Merah (warna resmi PBB) */
+.sdg-4 {
+  background: linear-gradient(135deg, #fff7f0 0%, #fff1e6 100%);
+  border-color: #fcd9b8;
+}
+.sdg-4 .sdg-icon-wrap {
+  background: #c5192d;
+}
+.sdg-4 .sdg-number {
+  color: #fff;
+}
+.sdg-4 .sdg-icon {
+  color: rgba(255, 255, 255, 0.75);
+}
+.sdg-4 .sdg-title {
+  color: #9a1222;
+}
+.sdg-4 .sdg-desc {
+  color: #b45c30;
+}
+.sdg-4 .sdg-glow {
+  background: radial-gradient(circle at 0% 50%, rgba(197, 25, 45, 0.08), transparent 70%);
+}
+
+/* SDG 10 — Magenta */
+.sdg-10 {
+  background: linear-gradient(135deg, #fdf0f8 0%, #fce8f5 100%);
+  border-color: #f0b8e0;
+}
+.sdg-10 .sdg-icon-wrap {
+  background: #dd1367;
+}
+.sdg-10 .sdg-number {
+  color: #fff;
+}
+.sdg-10 .sdg-icon {
+  color: rgba(255, 255, 255, 0.75);
+}
+.sdg-10 .sdg-title {
+  color: #8b0d42;
+}
+.sdg-10 .sdg-desc {
+  color: #a83870;
+}
+.sdg-10 .sdg-glow {
+  background: radial-gradient(circle at 0% 50%, rgba(221, 19, 103, 0.08), transparent 70%);
+}
+
+/* SDG 12 — Emas */
+.sdg-12 {
+  background: linear-gradient(135deg, #fdfbf0 0%, #fdf6e3 100%);
+  border-color: #f0dfa0;
+}
+.sdg-12 .sdg-icon-wrap {
+  background: #bf8b2e;
+}
+.sdg-12 .sdg-number {
+  color: #fff;
+}
+.sdg-12 .sdg-icon {
+  color: rgba(255, 255, 255, 0.75);
+}
+.sdg-12 .sdg-title {
+  color: #7a5a1a;
+}
+.sdg-12 .sdg-desc {
+  color: #967535;
+}
+.sdg-12 .sdg-glow {
+  background: radial-gradient(circle at 0% 50%, rgba(191, 139, 46, 0.1), transparent 70%);
+}
+
+.sdg-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sdg-icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 640px) {
+  .sdg-icon-wrap {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+.sdg-number {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  font-size: 0.52rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sdg-icon {
+  width: 17px;
+  height: 17px;
+  margin-top: 4px;
+}
+
+.sdg-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sdg-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sdg-desc {
+  font-size: 0.58rem;
+  font-weight: 500;
+  line-height: 1.3;
+  opacity: 0.85;
+}
+
+@media (min-width: 640px) {
+  .sdg-title {
+    font-size: 0.73rem;
+  }
+  .sdg-desc {
+    font-size: 0.61rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .sdg-title {
+    font-size: 0.76rem;
+  }
+  .sdg-desc {
+    font-size: 0.63rem;
+  }
+}
+
+/* ════════════════════════════════════════
+   EXISTING STYLES (tidak diubah)
+════════════════════════════════════════ */
 .category-card {
   padding: clamp(8px, 2vw, 32px) !important;
 }
@@ -266,16 +553,6 @@ onMounted(() => fetchCategories())
     rgba(59, 130, 246, 0.1) 50%,
     transparent 100%
   );
-  animation: shimmer 10s linear infinite;
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
 }
 
 @keyframes fadeInUp {

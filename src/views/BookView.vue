@@ -1,11 +1,12 @@
 <script setup>
-import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import api from '@/lib/axios'
-import logo from '@/assets/images/logo-nav.png'
 
 const route = useRoute()
+const router = useRouter()
 
+// State variables
 const books = ref([])
 const search = ref('')
 const page = ref(1)
@@ -13,26 +14,43 @@ const lastPage = ref(1)
 const loading = ref(false)
 const firstLoad = ref(true)
 const selectedCategory = ref(route.query.category || null)
-
+const hasMore = computed(() => page.value <= lastPage.value)
 const sentinelEl = ref(null)
 let observer = null
 let searchTimer = null
 
 const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
 
+// Function to handle the book cover image URL
 function coverUrl(cover) {
   if (!cover) return null
   if (cover.startsWith('http')) return cover
   return `${storageBase}/${cover}`
 }
+// Ganti fungsi viewBookDetails
+const viewBookDetails = async (book) => {
+  try {
+    // Tunggu increment selesai sebelum navigasi
+    const { data } = await api.post(`/books/${book.id}`)
+    // Update views langsung di list agar UI sinkron
+    if (data?.views !== undefined) {
+      book.views = data.views
+    }
+  } catch (err) {
+    // Jangan blok navigasi meski increment gagal
+    console.error('Increment failed:', err.response?.data || err.message)
+  } finally {
+    router.push(`/books/${book.id}`)
+  }
+}
 
+// Function to fetch the books from API
 async function fetchBooks(reset = false) {
-  // ✅ FIX: guard hanya cek loading, tidak blok reset
   if (loading.value && !reset) return
   if (!reset && page.value > lastPage.value) return
 
   loading.value = true
-  if (reset) firstLoad.value = true // ✅ set di sini, bukan di resetAndFetch
+  if (reset) firstLoad.value = true
 
   try {
     const { data } = await api.get('/books', {
@@ -63,6 +81,7 @@ async function fetchBooks(reset = false) {
   }
 }
 
+// Function to set up the infinite scroll observer
 function setupObserver() {
   if (observer) observer.disconnect()
   observer = new IntersectionObserver(
@@ -81,14 +100,15 @@ function setupObserver() {
   if (sentinelEl.value) observer.observe(sentinelEl.value)
 }
 
+// Function to reset and fetch the books again (e.g., after search or category change)
 function resetAndFetch() {
-  // ✅ FIX: tidak set firstLoad di sini, biarkan fetchBooks yang handle
   books.value = []
   page.value = 1
   lastPage.value = 1
   fetchBooks(true)
 }
 
+// Watch for changes in the search term and category
 watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => resetAndFetch(), 500)
@@ -110,6 +130,7 @@ watch(
   },
 )
 
+// On mount, fetch books and set up the observer
 onMounted(async () => {
   if (route.query.q) search.value = route.query.q
   if (route.query.category) selectedCategory.value = route.query.category
@@ -118,16 +139,14 @@ onMounted(async () => {
   setupObserver()
 })
 
+// On unmount, clean up observer and search timer
 onUnmounted(() => {
   observer?.disconnect()
   clearTimeout(searchTimer)
 })
 
-const hasMore = computed(() => page.value <= lastPage.value)
-const isEmpty = computed(() => !loading.value && !firstLoad.value && books.value.length === 0)
-
-// ✅ FIX: harga minimum yang aman dari NaN
-function minPrice(book) {
+// Helper function to calculate the minimum price of a book
+const minPrice = (book) => {
   const prices = []
   if (book.has_print && book.price_print != null) prices.push(Number(book.price_print))
   if (book.has_pdf && book.price_pdf != null) prices.push(Number(book.price_pdf))
@@ -204,32 +223,31 @@ function minPrice(book) {
 
       <!-- ADA DATA -->
       <div v-else-if="books.length > 0" class="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <router-link
+        <div
           v-for="book in books"
           :key="book.id"
-          :to="`/books/${book.id}`"
           class="group bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer block"
+          @click="viewBookDetails(book)"
         >
-          <div class="overflow-hidden rounded-xl bg-gray-100">
+          <div class="overflow-hidden rounded-xl bg-gray-100 mb-4">
             <img
               v-if="coverUrl(book.cover)"
               :src="coverUrl(book.cover)"
               :alt="book.title"
-              class="w-full h-40 object-cover rounded-xl group-hover:scale-105 transition duration-300"
+              class="w-full h-48 object-cover rounded-xl group-hover:scale-105 transition duration-300"
               loading="lazy"
             />
-            <div v-else class="w-full h-40 flex items-center justify-center text-4xl">📚</div>
+            <div v-else class="w-full h-48 flex items-center justify-center text-4xl">📚</div>
           </div>
 
           <h2
-            class="font-semibold text-gray-800 text-sm mt-3 line-clamp-2 group-hover:text-blue-600 transition"
+            class="font-semibold text-gray-800 text-sm md:text-base mt-3 line-clamp-2 group-hover:text-blue-600 transition"
           >
             {{ book.title }}
           </h2>
-          <p class="text-gray-400 text-xs mt-1 line-clamp-1">{{ book.author }}</p>
+          <p class="text-gray-400 text-xs md:text-sm mt-1 line-clamp-1">{{ book.author }}</p>
 
-          <!-- ✅ FIX: harga aman dari NaN -->
-          <p class="text-blue-600 font-semibold mt-2 text-sm">
+          <p class="text-blue-600 font-semibold mt-2 text-sm md:text-base">
             <template v-if="minPrice(book) !== null">
               {{ book.has_print && book.has_pdf ? 'Mulai ' : '' }}Rp
               {{ minPrice(book).toLocaleString('id-ID') }}
@@ -251,24 +269,34 @@ function minPrice(book) {
             >
           </div>
 
+          <p class="mt-3 text-[11px] md:text-xs text-gray-500 flex items-center gap-1">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-3 w-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+              />
+            </svg>
+            {{ book.views || 0 }} Dilihat
+          </p>
+
           <span class="mt-2 text-xs text-gray-400 group-hover:text-blue-500 transition block">
             Lihat Detail →
           </span>
-        </router-link>
-
-        <!-- Skeleton load-more -->
-        <template v-if="loading">
-          <div
-            v-for="n in 4"
-            :key="`more-${n}`"
-            class="bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-gray-100 shadow-sm"
-          >
-            <div class="skeleton h-40 rounded-xl mb-3"></div>
-            <div class="skeleton h-3.5 rounded w-3/4 mb-2"></div>
-            <div class="skeleton h-3 rounded w-1/2 mb-3"></div>
-            <div class="skeleton h-4 rounded w-1/3"></div>
-          </div>
-        </template>
+        </div>
       </div>
 
       <!-- EMPTY STATE -->
@@ -317,48 +345,3 @@ function minPrice(book) {
     </div>
   </div>
 </template>
-
-<style scoped>
-.grid-bg {
-  background:
-    linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(59, 130, 246, 0.08) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-.grid-bg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    120deg,
-    transparent 0%,
-    rgba(59, 130, 246, 0.15) 30%,
-    rgba(59, 130, 246, 0.3) 50%,
-    rgba(59, 130, 246, 0.15) 70%,
-    transparent 100%
-  );
-  animation: shimmer 8s linear infinite;
-  mix-blend-mode: lighten;
-}
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-.skeleton {
-  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
-  background-size: 200% 100%;
-  animation: bone 1.4s ease-in-out infinite;
-}
-@keyframes bone {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-</style>
