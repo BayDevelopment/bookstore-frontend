@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import api from '@/lib/axios'
 import logo from '@/assets/images/logo-nav.png'
 import {
@@ -9,10 +9,11 @@ import {
   UserCircleIcon,
   ChevronDownIcon,
 } from '@heroicons/vue/24/outline'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const { isLoggedIn, user, clearAuth } = useAuth()
 
 const isOpen = ref(false)
@@ -47,15 +48,20 @@ const handleLogout = async () => {
   try {
     await api.post('/logout')
   } catch {
-    // optional: bisa kosong
+    console.warn('Logout API gagal, tetap melanjutkan logout lokal')
   } finally {
     clearAuth()
     cartCount.value = 0
-    isProfileOpen.value = false
-    isMobileProfileOpen.value = false
-    isOpen.value = false
+    closeAllMenus()
     router.push('/login')
   }
+}
+
+const closeAllMenus = () => {
+  isOpen.value = false
+  isMobileProfileOpen.value = false
+  isProfileOpen.value = false
+  isSearchOpen.value = false
 }
 
 const closeProfile = (e) => {
@@ -72,7 +78,11 @@ function handleSearch() {
   search.value = ''
 }
 
-// ✅ Satu onMounted dan onUnmounted saja
+// Otomatis tutup menu saat pindah halaman
+watch(route, () => {
+  closeAllMenus()
+})
+
 onMounted(() => {
   fetchCartCount()
   document.addEventListener('click', closeProfile)
@@ -83,12 +93,6 @@ onUnmounted(() => {
   document.removeEventListener('click', closeProfile)
   window.removeEventListener('cart-updated', onCartUpdated)
 })
-
-// ✅ Tambahkan fungsi ini
-function closeMobileMenu() {
-  isMobileProfileOpen.value = false
-  isOpen.value = false
-}
 </script>
 
 <template>
@@ -169,7 +173,7 @@ function closeMobileMenu() {
             </router-link>
           </div>
 
-          <!-- ─── BELUM LOGIN ─── -->
+          <!-- BELUM LOGIN -->
           <template v-if="!isLoggedIn">
             <router-link to="/login" class="text-gray-600 hover:text-blue-600 transition">
               Login
@@ -182,13 +186,12 @@ function closeMobileMenu() {
             </router-link>
           </template>
 
-          <!-- ─── SUDAH LOGIN — AVATAR DROPDOWN ─── -->
+          <!-- SUDAH LOGIN -->
           <div v-else id="profile-menu" class="relative">
             <button
               @click.stop="isProfileOpen = !isProfileOpen"
               class="flex items-center gap-2 hover:bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200 transition"
             >
-              <!-- Avatar inisial -->
               <div
                 class="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold"
               >
@@ -204,19 +207,16 @@ function closeMobileMenu() {
               />
             </button>
 
-            <!-- Dropdown -->
             <div
               v-if="isProfileOpen"
               class="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50"
             >
-              <!-- Info user -->
               <div class="px-4 py-3 border-b border-gray-100">
                 <p class="text-sm font-semibold text-gray-800">{{ user?.name }}</p>
                 <p class="text-xs text-gray-400 truncate">{{ user?.email }}</p>
                 <p class="text-xs text-gray-400">NIM: {{ user?.nim }}</p>
               </div>
 
-              <!-- Menu -->
               <router-link
                 to="/profile"
                 @click="isProfileOpen = false"
@@ -262,7 +262,6 @@ function closeMobileMenu() {
           <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
             <MagnifyingGlassIcon class="w-5 h-5" />
           </span>
-          <!-- update input di template navbar -->
           <input
             v-model="search"
             type="text"
@@ -271,7 +270,6 @@ function closeMobileMenu() {
             @keyup.enter="handleSearch"
             class="w-full pl-12 pr-10 py-3 rounded-xl bg-white border border-gray-200 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
           />
-          <!-- tambah tombol search -->
           <button
             @click="handleSearch"
             class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500"
@@ -284,19 +282,28 @@ function closeMobileMenu() {
 
     <!-- MOBILE MENU -->
     <div v-if="isOpen" class="md:hidden px-6 pb-5 space-y-4 border-t border-gray-100">
-      <router-link to="/" class="block text-gray-600 hover:text-blue-600">Home</router-link>
-      <router-link to="/books" class="block text-gray-600 hover:text-blue-600">Buku</router-link>
+      <router-link to="/" @click="closeAllMenus" class="block text-gray-600 hover:text-blue-600"
+        >Home</router-link
+      >
+      <router-link
+        to="/books"
+        @click="closeAllMenus"
+        class="block text-gray-600 hover:text-blue-600"
+        >Buku</router-link
+      >
 
       <!-- Mobile — belum login -->
       <template v-if="!isLoggedIn">
         <router-link
           to="/login"
+          @click="closeAllMenus"
           class="block px-3 py-2 rounded-lg border border-gray-300 text-gray-700 text-center hover:border-blue-600 hover:text-blue-600 transition"
         >
           Login
         </router-link>
         <router-link
           to="/register"
+          @click="closeAllMenus"
           class="block bg-blue-600 text-white text-center py-2 rounded-lg"
         >
           Daftar
@@ -304,9 +311,7 @@ function closeMobileMenu() {
       </template>
 
       <!-- Mobile — sudah login -->
-      <!-- Mobile — sudah login -->
       <template v-else>
-        <!-- Tombol avatar mobile — sama seperti desktop -->
         <div id="mobile-profile-menu" class="relative">
           <button
             @click.stop="isMobileProfileOpen = !isMobileProfileOpen"
@@ -327,7 +332,6 @@ function closeMobileMenu() {
             />
           </button>
 
-          <!-- Dropdown mobile -->
           <div
             v-if="isMobileProfileOpen"
             class="mt-2 w-full bg-white rounded-2xl shadow-xl border border-gray-100 py-2"
@@ -339,8 +343,8 @@ function closeMobileMenu() {
             </div>
 
             <router-link
-              to="/profil"
-              @click="closeMobileMenu"
+              to="/profile"
+              @click="closeAllMenus"
               class="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition"
             >
               <UserCircleIcon class="w-4 h-4" /> Profil Saya
@@ -348,7 +352,7 @@ function closeMobileMenu() {
 
             <router-link
               to="/orders"
-              @click="closeMobileMenu"
+              @click="closeAllMenus"
               class="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition"
             >
               📦 Pesanan Saya

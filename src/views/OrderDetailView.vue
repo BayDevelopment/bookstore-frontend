@@ -24,6 +24,10 @@ const uploadError = ref(null)
 const uploadSuccess = ref(false)
 const copied = ref(false)
 
+// ── STATE DOWNLOAD ──
+// Menyimpan loading state per book_id agar tidak semua tombol spinner bareng
+const downloadingMap = ref({})
+
 // ── CONSTANTS ──
 const token = localStorage.getItem('token')
 const STORAGE_URL = import.meta.env.VITE_STORAGE_URL || '/storage'
@@ -48,7 +52,6 @@ const currentStep = computed(() => {
 const pdfItems = computed(() => order.value?.items?.filter((i) => i.type === 'pdf') ?? [])
 const printItems = computed(() => order.value?.items?.filter((i) => i.type === 'print') ?? [])
 
-// ── Perlu upload? Hanya transfer + belum upload ──
 const needsUpload = computed(() => !isCash.value && isNotUploaded.value)
 
 const orderStatusInfo = computed(() => {
@@ -90,9 +93,7 @@ const proofStatusInfo = computed(() => {
 
 // ── HELPERS ──
 const sanitize = (html) => (!html ? '' : DOMPurify.sanitize(html))
-
 const formatPrice = (price) => 'Rp ' + Number(price ?? 0).toLocaleString('id-ID')
-
 const formatDate = (d) => {
   if (!d) return '-'
   return new Date(d).toLocaleDateString('id-ID', {
@@ -103,18 +104,78 @@ const formatDate = (d) => {
     minute: '2-digit',
   })
 }
-
 const getCoverSrc = (cover) => {
   if (!cover) return null
   return cover.startsWith('http') ? cover : `${STORAGE_URL}/${cover}`
 }
-
 const getProofSrc = (proof) => {
   if (!proof) return null
   return proof.startsWith('http') ? proof : `${STORAGE_URL}/${proof}`
 }
-
 const getItemSubtotal = (item) => Number(item.price ?? 0) * Number(item.qty ?? 1)
+
+// ── DOWNLOAD (AMAN) ──────────────────────────────────────────────────────────
+//
+// Alur:
+//   1. GET /orders/{order}/download-link/{book}
+//      → axios otomatis attach Bearer token dari interceptor
+//      → backend cek: login? milik user ini? status confirmed? pdf ada di order?
+//   2. Dapat { url: "https://api.../download?signature=...&uid=xxx&expires=..." }
+//   3. window.location.href = url → browser download PDF langsung
+//
+// Kenapa TIDAK pakai axios responseType blob di sini?
+//   Karena download route sudah menghasilkan file stream dari Storage::download()
+//   — lebih efisien dibuka langsung oleh browser dari signed URL yang sudah
+//   diikat ke uid user. Signed URL expire 5 menit (lihat DownloadController).
+//
+async function handleDownload(item) {
+  const bookId = item.book_id ?? item.book?.id
+  if (!bookId) return
+
+  // Cegah double klik
+  if (downloadingMap.value[bookId]) return
+  downloadingMap.value[bookId] = true
+
+  try {
+    // Step 1: Minta signed URL dari backend (butuh Bearer token via axios)
+    const { data } = await api.get(`/orders/${order.value.id}/download-link/${bookId}`)
+    const signedUrl = data?.url
+
+    if (!signedUrl) throw new Error('URL tidak tersedia.')
+
+    // Step 2: Buka signed URL → browser otomatis download PDF
+    // Signed URL sudah mengandung signature + uid + expires dari Laravel
+    window.location.href = signedUrl
+  } catch (err) {
+    const status = err.response?.status
+    const msg = err.response?.data?.message
+
+    if (status === 401) {
+      // Belum login — arahkan ke login
+      router.push({ path: '/login', query: { redirect: route.fullPath } })
+      return
+    }
+
+    if (status === 403) {
+      // Akses ditolak — tampilkan pesan dari backend
+      alert(`⛔ Akses Ditolak\n\n${msg || 'Kamu tidak memiliki akses ke file ini.'}`)
+      return
+    }
+
+    if (status === 404) {
+      alert(`📭 File Tidak Ditemukan\n\n${msg || 'File PDF belum tersedia. Hubungi admin.'}`)
+      return
+    }
+
+    alert(`❌ Gagal mengunduh\n\n${msg || 'Terjadi kesalahan. Coba beberapa saat lagi.'}`)
+  } finally {
+    // Delay sedikit agar tombol tidak langsung aktif kembali
+    setTimeout(() => {
+      downloadingMap.value[bookId] = false
+    }, 2000)
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── ACTIONS ──
 async function copyNorek() {
@@ -134,17 +195,24 @@ async function copyNorek() {
   setTimeout(() => (copied.value = false), 2000)
 }
 
-async function fetchOrder() {
+async function fetchOrder(retries = 3) {
   loading.value = true
   error.value = null
-  try {
-    const { data } = await api.get(`/orders/${route.params.id}`)
-    order.value = data.data ?? data
-  } catch (err) {
-    error.value = err.response?.data?.message ?? 'Gagal memuat detail pesanan.'
-  } finally {
-    loading.value = false
+  for (let i = 0; i < retries; i++) {
+    try {
+      const { data } = await api.get(`/orders/${route.params.id}`)
+      order.value = data.data ?? data
+      loading.value = false
+      return
+    } catch (err) {
+      if (i < retries - 1) {
+        await new Promise((r) => setTimeout(r, 1000 * (i + 1)))
+      } else {
+        error.value = err.response?.data?.message ?? 'Gagal memuat detail pesanan.'
+      }
+    }
   }
+  loading.value = false
 }
 
 function onFileChange(e) {
@@ -212,7 +280,6 @@ onUnmounted(() => {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
 })
 
-// Auto-scroll ke upload section kalau dari success modal
 watch(
   () => order.value,
   (val) => {
@@ -223,24 +290,13 @@ watch(
     }
   },
 )
-
-function getDownloadUrl(url) {
-  if (!url) return null
-  const token = localStorage.getItem('token')
-  if (!token) return null
-  const u = new URL(url)
-  u.searchParams.set('token', token)
-  return u.toString()
-}
 </script>
 
 <template>
   <div class="relative min-h-screen overflow-hidden print:bg-white">
     <div class="absolute inset-0 pointer-events-none grid-bg print:hidden"></div>
 
-    <!-- ══════════════════════════════════ -->
-    <!-- MODAL: Upload Sukses              -->
-    <!-- ══════════════════════════════════ -->
+    <!-- MODAL: Upload Sukses -->
     <Transition name="fade">
       <div
         v-if="uploadSuccess"
@@ -282,10 +338,7 @@ function getDownloadUrl(url) {
       </div>
     </Transition>
 
-    <!-- ══════════════════════════════════ -->
-    <!-- MAIN CONTENT                      -->
-    <!-- ══════════════════════════════════ -->
-    <div class="relative max-w-2xl mx-auto px-6 pt-8 pb-16 print:px-0 print:pt-0">
+    <div class="relative max-w-2xl mx-auto px-4 sm:px-6 pt-8 pb-16 print:px-0 print:pt-0">
       <!-- Back -->
       <button
         @click="router.push('/orders')"
@@ -318,16 +371,13 @@ function getDownloadUrl(url) {
         <p class="text-4xl mb-3">⚠️</p>
         <p class="text-gray-600">{{ error }}</p>
         <button
-          @click="fetchOrder"
+          @click="fetchOrder()"
           class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-full text-sm hover:bg-blue-700 transition"
         >
           Coba Lagi
         </button>
       </div>
 
-      <!-- ══════════════════════════════════ -->
-      <!-- ORDER CONTENT                     -->
-      <!-- ══════════════════════════════════ -->
       <template v-else-if="order">
         <!-- Header -->
         <div class="mb-6 flex justify-between items-start print:mb-4">
@@ -356,9 +406,7 @@ function getDownloadUrl(url) {
           </button>
         </div>
 
-        <!-- ══════════════════════════════════ -->
-        <!-- STEPPER                           -->
-        <!-- ══════════════════════════════════ -->
+        <!-- STEPPER -->
         <div
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 print:shadow-none"
         >
@@ -423,17 +471,12 @@ function getDownloadUrl(url) {
           </div>
         </div>
 
-        <!-- ══════════════════════════════════════════ -->
-        <!-- ANIMASI PERLU UPLOAD (pulse attention)    -->
-        <!-- Tampil hanya saat transfer & belum upload -->
-        <!-- ══════════════════════════════════════════ -->
+        <!-- BANNER UPLOAD -->
         <Transition name="slide-fade">
           <div v-if="needsUpload" class="relative mb-4 rounded-2xl overflow-hidden print:hidden">
-            <!-- Background animasi -->
             <div
               class="absolute inset-0 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 animate-gradient-x opacity-90 rounded-2xl"
             ></div>
-            <!-- Ripple rings -->
             <div class="absolute inset-0 flex items-center justify-end pr-6 pointer-events-none">
               <div class="relative">
                 <div
@@ -444,14 +487,13 @@ function getDownloadUrl(url) {
                 ></div>
               </div>
             </div>
-            <!-- Content -->
             <div class="relative p-5 flex items-center gap-4">
               <div
                 class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center shrink-0 animate-bounce-slow"
               >
                 <span class="text-2xl">📤</span>
               </div>
-              <div class="flex-1">
+              <div class="flex-1 min-w-0">
                 <p class="text-white font-bold text-base">Upload Bukti Pembayaran!</p>
                 <p class="text-white/80 text-xs mt-0.5">
                   Pesananmu menunggu konfirmasi. Upload sekarang agar cepat diproses.
@@ -468,9 +510,7 @@ function getDownloadUrl(url) {
           </div>
         </Transition>
 
-        <!-- ══════════════════════════════════ -->
-        <!-- DAFTAR BUKU                       -->
-        <!-- ══════════════════════════════════ -->
+        <!-- DAFTAR BUKU -->
         <div
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 print:shadow-none"
         >
@@ -487,7 +527,6 @@ function getDownloadUrl(url) {
               {{ orderStatusInfo.label }}
             </span>
           </div>
-
           <div class="space-y-4">
             <div
               v-for="(item, idx) in order.items"
@@ -530,7 +569,6 @@ function getDownloadUrl(url) {
               </div>
             </div>
           </div>
-
           <div class="mt-4 pt-4 border-t-2 border-gray-100">
             <div class="flex justify-between items-center">
               <span class="text-sm font-bold text-gray-700">Total Pembayaran</span>
@@ -539,9 +577,7 @@ function getDownloadUrl(url) {
           </div>
         </div>
 
-        <!-- ══════════════════════════════════ -->
-        <!-- RINCIAN PESANAN                   -->
-        <!-- ══════════════════════════════════ -->
+        <!-- RINCIAN PESANAN -->
         <div
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 print:shadow-none"
         >
@@ -583,9 +619,7 @@ function getDownloadUrl(url) {
           </div>
         </div>
 
-        <!-- ══════════════════════════════════ -->
-        <!-- REKENING BANK (transfer only)     -->
-        <!-- ══════════════════════════════════ -->
+        <!-- REKENING BANK -->
         <div
           v-if="!isCash && isNotUploaded"
           class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 shadow-sm p-5 mb-4 print:hidden"
@@ -633,9 +667,7 @@ function getDownloadUrl(url) {
           </div>
         </div>
 
-        <!-- ══════════════════════════════════ -->
-        <!-- CASH INFO                         -->
-        <!-- ══════════════════════════════════ -->
+        <!-- CASH INFO -->
         <div
           v-if="isCash"
           class="bg-green-50 rounded-2xl border border-green-200 shadow-sm p-5 mb-4 print:hidden"
@@ -658,10 +690,7 @@ function getDownloadUrl(url) {
           </div>
         </div>
 
-        <!-- ══════════════════════════════════════════════════════ -->
-        <!-- UPLOAD SECTION — not_uploaded & bukan cash           -->
-        <!-- Punya id="upload-section" untuk scroll target        -->
-        <!-- ══════════════════════════════════════════════════════ -->
+        <!-- UPLOAD SECTION -->
         <div
           v-if="isNotUploaded && !isCash"
           id="upload-section"
@@ -681,8 +710,6 @@ function getDownloadUrl(url) {
               </p>
             </div>
           </div>
-
-          <!-- Dropzone -->
           <div
             @click="triggerFilePicker"
             :class="[
@@ -736,11 +763,9 @@ function getDownloadUrl(url) {
               <p class="text-xs text-gray-400 mt-1">JPG, PNG • Maks 5MB</p>
             </div>
           </div>
-
           <p v-if="uploadError" class="mt-3 text-xs text-red-500 flex items-center gap-1">
             <span>⚠️</span> {{ uploadError }}
           </p>
-
           <button
             @click="uploadBukti"
             :disabled="!selectedFile || uploading"
@@ -766,16 +791,14 @@ function getDownloadUrl(url) {
           </button>
         </div>
 
-        <!-- ══════════════════════════════════ -->
-        <!-- UPLOADED: Sedang Ditinjau         -->
-        <!-- ══════════════════════════════════ -->
+        <!-- UPLOADED: Sedang Ditinjau -->
         <div
           v-if="isUploaded"
           class="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-4 print:hidden"
         >
           <div class="flex items-start gap-3">
             <span class="text-2xl mt-0.5">🔍</span>
-            <div class="flex-1">
+            <div class="flex-1 min-w-0">
               <h2 class="text-sm font-bold text-blue-800 mb-1">Bukti Sedang Ditinjau Admin</h2>
               <p class="text-xs text-blue-600 mb-4">
                 Admin sedang memverifikasi bukti pembayaranmu. Biasanya memakan waktu 1×24 jam.
@@ -810,16 +833,14 @@ function getDownloadUrl(url) {
           </div>
         </div>
 
-        <!-- ══════════════════════════════════ -->
-        <!-- INVALID: Ditolak Admin            -->
-        <!-- ══════════════════════════════════ -->
+        <!-- INVALID: Ditolak Admin -->
         <div
           v-if="isInvalid"
           class="bg-red-50 border border-red-200 rounded-2xl p-5 mb-4 shadow-sm print:hidden"
         >
           <div class="flex items-start gap-3">
             <span class="text-2xl mt-0.5 animate-bounce">❌</span>
-            <div class="flex-1">
+            <div class="flex-1 min-w-0">
               <h2 class="text-sm font-bold text-red-800 mb-1">Bukti Pembayaran Ditolak</h2>
               <div
                 v-if="order.proof_note"
@@ -896,22 +917,22 @@ function getDownloadUrl(url) {
           </div>
         </div>
 
-        <!-- ══════════════════════════════════ -->
-        <!-- VERIFIED: Pembayaran Diterima     -->
-        <!-- ══════════════════════════════════ -->
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <!-- VERIFIED: Pembayaran Diterima                                     -->
+        <!-- ══════════════════════════════════════════════════════════════════ -->
         <div
           v-if="isVerified"
           class="bg-green-50 border border-green-200 rounded-2xl p-5 mb-4 print:hidden"
         >
           <div class="flex items-start gap-3">
             <span class="text-2xl mt-0.5">🎉</span>
-            <div class="flex-1">
+            <div class="flex-1 min-w-0">
               <h2 class="text-sm font-bold text-green-800 mb-1">Pembayaran Diverifikasi!</h2>
               <p class="text-sm text-green-600 mb-4">
                 Bukti pembayaranmu telah diterima dan diverifikasi oleh admin.
               </p>
 
-              <!-- Print Items: ambil di bagian akademik -->
+              <!-- Print Items -->
               <div
                 v-if="printItems.length > 0"
                 class="bg-white rounded-xl border border-green-200 p-4 mb-4"
@@ -936,32 +957,47 @@ function getDownloadUrl(url) {
                 </div>
               </div>
 
-              <!-- PDF Items: download via signed URL dari backend -->
-              <!-- ✅ AMAN: URL dari backend (signed + expiry), bukan path file langsung -->
+              <!-- ✅ PDF Items — Download via handleDownload (AMAN) -->
               <div
                 v-if="pdfItems.length > 0"
                 class="bg-white rounded-xl border border-green-200 p-4 mb-4"
               >
                 <div class="flex items-start gap-2">
-                  <span class="text-lg mt-0.5">📄</span>
-                  <div class="flex-1">
+                  <span class="text-lg mt-0.5 shrink-0">📄</span>
+                  <div class="flex-1 min-w-0">
                     <p class="text-sm font-bold text-green-800">Download E-Book PDF</p>
                     <p class="text-xs text-green-700 mb-3">Buku digitalmu sudah siap didownload:</p>
                     <div class="space-y-2">
-                      <a
+                      <button
                         v-for="item in pdfItems"
                         :key="item.id"
-                        :href="getDownloadUrl(item.download_url)"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        :class="[
-                          'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition active:scale-95',
-                          item.download_url
-                            ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed pointer-events-none',
-                        ]"
+                        @click="handleDownload(item)"
+                        :disabled="downloadingMap[item.book_id ?? item.book?.id]"
+                        class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition active:scale-95 w-full overflow-hidden bg-green-600 text-white hover:bg-green-700 shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
                       >
+                        <!-- Spinner saat loading, ikon download saat idle -->
                         <svg
+                          v-if="downloadingMap[item.book_id ?? item.book?.id]"
+                          class="w-5 h-5 shrink-0 animate-spin"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            class="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            stroke-width="4"
+                          ></circle>
+                          <path
+                            class="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8v8z"
+                          ></path>
+                        </svg>
+                        <svg
+                          v-else
                           class="w-5 h-5 shrink-0"
                           fill="none"
                           stroke="currentColor"
@@ -972,17 +1008,21 @@ function getDownloadUrl(url) {
                             d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
                           />
                         </svg>
-                        <div class="flex-1 min-w-0">
-                          <p class="truncate">{{ item.book?.title ?? item.title }}</p>
-                          <p class="text-[10px] font-normal opacity-80">
-                            {{ item.download_url ? 'Klik untuk download' : 'Link tidak tersedia' }}
+                        <div class="flex-1 min-w-0 overflow-hidden text-left">
+                          <p class="truncate leading-tight">{{ item.book?.title ?? item.title }}</p>
+                          <p class="text-[10px] font-normal opacity-80 truncate">
+                            {{
+                              downloadingMap[item.book_id ?? item.book?.id]
+                                ? 'Menyiapkan link...'
+                                : 'Klik untuk download'
+                            }}
                           </p>
                         </div>
-                      </a>
+                      </button>
                     </div>
                     <p class="text-[10px] text-green-600 mt-3 flex items-center gap-1">
                       <svg
-                        class="w-3 h-3"
+                        class="w-3 h-3 shrink-0"
                         fill="none"
                         stroke="currentColor"
                         stroke-width="2"
@@ -990,7 +1030,7 @@ function getDownloadUrl(url) {
                       >
                         <path d="M12 9v4m0 4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
                       </svg>
-                      Link aktif selama 1 jam. Refresh halaman untuk generate link baru.
+                      Link aktif selama 5 menit. Download langsung dimulai setelah klik.
                     </p>
                   </div>
                 </div>
@@ -1042,8 +1082,6 @@ function getDownloadUrl(url) {
     background-position: -200% 0;
   }
 }
-
-/* Fade transition */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;
@@ -1052,8 +1090,6 @@ function getDownloadUrl(url) {
 .fade-leave-to {
   opacity: 0;
 }
-
-/* Slide fade untuk banner upload */
 .slide-fade-enter-active {
   transition: all 0.4s ease;
 }
@@ -1065,8 +1101,6 @@ function getDownloadUrl(url) {
   opacity: 0;
   transform: translateY(-10px);
 }
-
-/* Pop modal */
 .animate-pop {
   animation: pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -1080,8 +1114,6 @@ function getDownloadUrl(url) {
     opacity: 1;
   }
 }
-
-/* Gradient animasi banner */
 .animate-gradient-x {
   background-size: 200% 100%;
   animation: gradient-x 3s ease infinite;
@@ -1095,8 +1127,6 @@ function getDownloadUrl(url) {
     background-position: 100% 50%;
   }
 }
-
-/* Ripple rings */
 .animate-ping-md {
   animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
@@ -1113,8 +1143,6 @@ function getDownloadUrl(url) {
     opacity: 0;
   }
 }
-
-/* Bounce lambat untuk icon upload */
 .animate-bounce-slow {
   animation: bounce-slow 2s ease-in-out infinite;
 }
@@ -1127,7 +1155,6 @@ function getDownloadUrl(url) {
     transform: translateY(-6px);
   }
 }
-
 @media print {
   .grid-bg {
     display: none !important;

@@ -5,21 +5,23 @@ const USER_KEY = 'user'
 const LAST_ACTIVITY_KEY = 'last_activity'
 const INACTIVITY_LIMIT = 5 * 60 * 60 * 1000
 
-// ✅ Helper: JSON.parse aman tanpa crash
-function safeParseJSON(val) {
+// ✅ SAFE PARSE (ANTI CRASH MOBILE)
+const safeParse = (data) => {
   try {
-    return JSON.parse(val)
+    return JSON.parse(data)
   } catch {
     return null
   }
 }
 
 const token = ref(localStorage.getItem(TOKEN_KEY))
-const userData = ref(safeParseJSON(localStorage.getItem(USER_KEY)))
+const userData = ref(safeParse(localStorage.getItem(USER_KEY)))
 
 let inactivityTimer = null
+let listenersActive = false
 
-const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click']
+// ✅ OPTIMASI MOBILE (buang event berat)
+const ACTIVITY_EVENTS = ['touchstart', 'click', 'keydown']
 
 export const useAuth = () => {
   const isLoggedIn = computed(() => !!token.value && !!userData.value)
@@ -27,11 +29,19 @@ export const useAuth = () => {
 
   const isSessionExpired = () => {
     const lastActivity = localStorage.getItem(LAST_ACTIVITY_KEY)
+
     if (!lastActivity) {
       localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString())
       return false
     }
-    return Date.now() - parseInt(lastActivity) > INACTIVITY_LIMIT
+
+    const last = parseInt(lastActivity, 10)
+    if (isNaN(last) || last <= 0 || last > Date.now()) {
+      localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString())
+      return false
+    }
+
+    return Date.now() - last > INACTIVITY_LIMIT
   }
 
   const updateActivity = () => {
@@ -40,15 +50,19 @@ export const useAuth = () => {
     }
   }
 
-  // ✅ Stop dulu sebelum pasang — cegah listener duplikat
   const startActivityListeners = () => {
-    stopActivityListeners()
+    if (listenersActive) return
+    listenersActive = true
+
     ACTIVITY_EVENTS.forEach((event) => {
       window.addEventListener(event, updateActivity, { passive: true })
     })
   }
 
   const stopActivityListeners = () => {
+    if (!listenersActive) return
+    listenersActive = false
+
     ACTIVITY_EVENTS.forEach((event) => {
       window.removeEventListener(event, updateActivity)
     })
@@ -59,7 +73,7 @@ export const useAuth = () => {
     inactivityTimer = setInterval(() => {
       if (isLoggedIn.value && isSessionExpired()) {
         clearAuth()
-        window.location.href = '/login?reason=timeout'
+        window.dispatchEvent(new CustomEvent('auth:expired'))
       }
     }, 60 * 1000)
   }
@@ -81,42 +95,29 @@ export const useAuth = () => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     localStorage.removeItem(LAST_ACTIVITY_KEY)
-    localStorage.removeItem('temp_email')
-    localStorage.removeItem('fakultas_list')
-    localStorage.removeItem('prodi_list')
 
     stopActivityListeners()
     clearInterval(inactivityTimer)
+    inactivityTimer = null
   }
 
   const initAuth = () => {
-    const storedToken = localStorage.getItem(TOKEN_KEY)
-    if (!storedToken) return
+    try {
+      if (!token.value) return { valid: false, reason: 'no_token' }
 
-    // ✅ safeParseJSON — tidak crash walau localStorage corrupt
-    const storedUser = safeParseJSON(localStorage.getItem(USER_KEY))
-    if (!storedUser) {
+      if (isSessionExpired()) {
+        clearAuth()
+        return { valid: false, reason: 'timeout' }
+      }
+
+      startActivityListeners()
+      startInactivityWatcher()
+      return { valid: true }
+    } catch (e) {
       clearAuth()
-      return
+      return { valid: false, reason: 'error' }
     }
-
-    token.value = storedToken
-    userData.value = storedUser
-
-    if (isSessionExpired()) {
-      clearAuth()
-      window.location.href = '/login?reason=timeout'
-      return
-    }
-
-    startActivityListeners()
-    startInactivityWatcher()
   }
 
-  const updateUser = (newUser) => {
-    userData.value = { ...userData.value, ...newUser }
-    localStorage.setItem(USER_KEY, JSON.stringify(userData.value))
-  }
-
-  return { isLoggedIn, user, setAuth, clearAuth, initAuth, updateUser }
+  return { isLoggedIn, user, setAuth, clearAuth, initAuth }
 }
