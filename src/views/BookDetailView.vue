@@ -17,6 +17,9 @@ const cartLoading = ref(false)
 
 const selectedType = ref(null)
 
+// ── Deskripsi collapsible ──
+const descExpanded = ref(false)
+
 const token = ref(localStorage.getItem('token'))
 const isLoggedIn = computed(() => !!token.value)
 
@@ -25,7 +28,6 @@ function onStorageChange(e) {
 }
 
 let addedTimer = null
-// ✅ FIX: flag untuk cegah double-fetch yang benar
 let isFetching = false
 
 onMounted(() => {
@@ -39,7 +41,6 @@ onUnmounted(() => {
 })
 
 async function fetchDetail() {
-  // ✅ FIX: guard pakai flag terpisah, bukan kombinasi loading+book
   if (isFetching) return
   isFetching = true
   loading.value = true
@@ -92,6 +93,13 @@ const coverSrc = computed(() => {
 const safeDescription = computed(() => {
   if (!book.value?.description) return 'Tidak ada deskripsi.'
   return DOMPurify.sanitize(book.value.description)
+})
+
+// Cek apakah deskripsi cukup panjang untuk perlu tombol toggle
+const isDescLong = computed(() => {
+  const text = book.value?.description ?? ''
+  // anggap panjang jika lebih dari ~300 karakter atau ada lebih dari 4 baris
+  return text.length > 300
 })
 
 async function handleKeranjang() {
@@ -371,16 +379,53 @@ function goToRegister() {
 
             <hr class="border-gray-100 mb-6" />
 
-            <!-- Deskripsi -->
+            <!-- ══════════════ DESKRIPSI COLLAPSIBLE ══════════════ -->
             <div class="mb-6">
               <h2 class="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">
                 Deskripsi
               </h2>
-              <div
-                class="text-gray-600 text-sm leading-relaxed prose prose-sm max-w-none"
-                v-html="safeDescription"
-              ></div>
+
+              <!-- Wrapper dengan overflow tersembunyi saat collapsed -->
+              <div class="relative">
+                <div
+                  :class="[
+                    'text-gray-600 text-sm leading-relaxed prose prose-sm max-w-none overflow-hidden transition-all duration-500 ease-in-out',
+                    !descExpanded && isDescLong ? 'max-h-[6rem]' : 'max-h-[2000px]',
+                  ]"
+                  v-html="safeDescription"
+                ></div>
+
+                <!-- Gradient fade saat collapsed (hanya tampil jika panjang & belum expand) -->
+                <Transition name="fade">
+                  <div
+                    v-if="!descExpanded && isDescLong"
+                    class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white/90 to-transparent pointer-events-none"
+                  ></div>
+                </Transition>
+              </div>
+
+              <!-- Tombol toggle (hanya muncul jika deskripsi panjang) -->
+              <button
+                v-if="isDescLong"
+                type="button"
+                @click="descExpanded = !descExpanded"
+                class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-500 hover:text-blue-700 transition-colors group"
+              >
+                <span>{{ descExpanded ? 'Sembunyikan' : 'Lihat Selengkapnya' }}</span>
+                <!-- Ikon panah yang rotate -->
+                <svg
+                  class="w-3.5 h-3.5 transition-transform duration-300"
+                  :class="descExpanded ? 'rotate-180' : 'rotate-0'"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
             </div>
+            <!-- ══════════════ END DESKRIPSI ══════════════ -->
 
             <!-- Info Grid -->
             <div class="grid grid-cols-2 gap-3 mb-8">
@@ -537,5 +582,10 @@ function goToRegister() {
     transform: scale(1);
     opacity: 1;
   }
+}
+
+/* Pastikan transisi max-height smooth */
+.prose {
+  transition: max-height 0.5s ease-in-out;
 }
 </style>

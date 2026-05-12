@@ -6,7 +6,6 @@ import api from '@/lib/axios'
 const route = useRoute()
 const router = useRouter()
 
-// State variables
 const books = ref([])
 const search = ref('')
 const page = ref(1)
@@ -15,36 +14,57 @@ const loading = ref(false)
 const firstLoad = ref(true)
 const selectedCategory = ref(route.query.category || null)
 const hasMore = computed(() => page.value <= lastPage.value)
+const isEmpty = computed(() => !firstLoad.value && !loading.value && books.value.length === 0)
 const sentinelEl = ref(null)
+const categories = ref([])
+const categoryContainer = ref(null)
+
+function selectCategory(catId) {
+  selectedCategory.value = catId
+  resetAndFetch()
+}
+
 let observer = null
 let searchTimer = null
 
 const storageBase = import.meta.env.VITE_STORAGE_URL ?? '/storage'
 
-// Function to handle the book cover image URL
 function coverUrl(cover) {
   if (!cover) return null
   if (cover.startsWith('http')) return cover
   return `${storageBase}/${cover}`
 }
-// Ganti fungsi viewBookDetails
+
 const viewBookDetails = async (book) => {
   try {
-    // Tunggu increment selesai sebelum navigasi
     const { data } = await api.post(`/books/${book.id}`)
-    // Update views langsung di list agar UI sinkron
     if (data?.views !== undefined) {
       book.views = data.views
     }
   } catch (err) {
-    // Jangan blok navigasi meski increment gagal
     console.error('Increment failed:', err.response?.data || err.message)
   } finally {
     router.push(`/books/${book.id}`)
   }
 }
 
-// Function to fetch the books from API
+function scrollLeft() {
+  categoryContainer.value.scrollBy({ left: -200, behavior: 'smooth' })
+}
+
+function scrollRight() {
+  categoryContainer.value.scrollBy({ left: 200, behavior: 'smooth' })
+}
+
+async function fetchCategories() {
+  try {
+    const { data } = await api.get('/categories')
+    categories.value = data
+  } catch (e) {
+    console.error('Error fetching categories', e)
+  }
+}
+
 async function fetchBooks(reset = false) {
   if (loading.value && !reset) return
   if (!reset && page.value > lastPage.value) return
@@ -81,7 +101,6 @@ async function fetchBooks(reset = false) {
   }
 }
 
-// Function to set up the infinite scroll observer
 function setupObserver() {
   if (observer) observer.disconnect()
   observer = new IntersectionObserver(
@@ -100,7 +119,6 @@ function setupObserver() {
   if (sentinelEl.value) observer.observe(sentinelEl.value)
 }
 
-// Function to reset and fetch the books again (e.g., after search or category change)
 function resetAndFetch() {
   books.value = []
   page.value = 1
@@ -108,7 +126,6 @@ function resetAndFetch() {
   fetchBooks(true)
 }
 
-// Watch for changes in the search term and category
 watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => resetAndFetch(), 500)
@@ -130,8 +147,8 @@ watch(
   },
 )
 
-// On mount, fetch books and set up the observer
 onMounted(async () => {
+  fetchCategories()
   if (route.query.q) search.value = route.query.q
   if (route.query.category) selectedCategory.value = route.query.category
   await fetchBooks(true)
@@ -139,13 +156,11 @@ onMounted(async () => {
   setupObserver()
 })
 
-// On unmount, clean up observer and search timer
 onUnmounted(() => {
   observer?.disconnect()
   clearTimeout(searchTimer)
 })
 
-// Helper function to calculate the minimum price of a book
 const minPrice = (book) => {
   const prices = []
   if (book.has_print && book.price_print != null) prices.push(Number(book.price_print))
@@ -156,17 +171,31 @@ const minPrice = (book) => {
 
 <template>
   <div class="relative overflow-hidden min-h-screen">
-    <div class="absolute inset-0 pointer-events-none grid-bg"></div>
+    <!-- ✅ Background: Grid + Glow + Animated Shine (sama seperti Login) -->
+    <div class="absolute inset-0 pointer-events-none overflow-hidden">
+      <!-- Grid lines -->
+      <div
+        class="w-full h-full bg-[linear-gradient(to_right,rgba(59,130,246,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-[size:40px_40px]"
+      ></div>
+      <!-- Center glow -->
+      <div class="absolute inset-0 flex justify-center items-center">
+        <div class="w-[600px] h-[600px] bg-blue-400/20 rounded-full blur-3xl"></div>
+      </div>
+      <!-- Animated shine sweep -->
+      <div
+        class="absolute inset-0 bg-gradient-to-r from-transparent via-blue-200/20 to-transparent animate-shine"
+      ></div>
+    </div>
 
-    <div class="relative max-w-7xl mx-auto px-6 py-12">
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 py-12">
       <!-- HEADER -->
       <div class="mb-8">
-        <h1 class="text-3xl font-semibold text-gray-800 mb-1">Daftar Buku</h1>
+        <h1 class="text-2xl sm:text-3xl font-semibold text-gray-800 mb-1">Daftar Buku</h1>
         <p class="text-gray-400 text-sm">Temukan buku terbaik sesuai kebutuhanmu</p>
       </div>
 
       <!-- SEARCH -->
-      <div class="mb-8 max-w-md">
+      <div class="mb-8 max-w-xxl">
         <div class="relative">
           <svg
             class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
@@ -201,32 +230,79 @@ const minPrice = (book) => {
             </svg>
           </button>
         </div>
-        <p v-if="!firstLoad && search" class="mt-2 text-xs text-gray-400 pl-1">
+        <p v-if="!firstLoad && search && !isEmpty" class="mt-2 text-xs text-gray-400 pl-1">
           Hasil untuk <span class="text-blue-500 font-medium">"{{ search }}"</span> ·
-          {{ books.length }} buku
+          {{ books.length }} buku ditemukan
         </p>
       </div>
 
-      <!-- SKELETON initial -->
-      <div v-if="firstLoad" class="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <div
-          v-for="n in 8"
-          :key="`sk-${n}`"
-          class="bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-gray-100 shadow-sm"
+      <!-- CATEGORY CAROUSEL -->
+      <div class="relative mb-6">
+        <!-- Left button -->
+        <button
+          @click="scrollLeft"
+          class="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white/70 backdrop-blur-md w-8 h-8 flex items-center justify-center rounded-full shadow hover:bg-blue-100 transition text-blue-600 font-bold"
         >
-          <div class="skeleton h-40 rounded-xl mb-3"></div>
+          ‹
+        </button>
+
+        <!-- Scroll container -->
+        <div ref="categoryContainer" class="flex gap-3 overflow-x-auto scrollbar-hide px-8">
+          <!-- Semua kategori -->
+          <div
+            @click="selectCategory(null)"
+            :class="[
+              'flex-shrink-0 cursor-pointer px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition',
+              selectedCategory === null
+                ? 'bg-blue-500 text-white shadow-md shadow-blue-200'
+                : 'bg-white/80 backdrop-blur-md border border-blue-100 text-blue-700 hover:bg-blue-50',
+            ]"
+          >
+            Semua
+          </div>
+
+          <div
+            v-for="cat in categories"
+            :key="cat.id"
+            @click="selectCategory(cat.id)"
+            :class="[
+              'flex-shrink-0 cursor-pointer px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition',
+              selectedCategory == cat.id
+                ? 'bg-blue-500 text-white shadow-md shadow-blue-200'
+                : 'bg-white/80 backdrop-blur-md border border-blue-100 text-blue-700 hover:bg-blue-50',
+            ]"
+          >
+            {{ cat.name }}
+          </div>
+        </div>
+
+        <!-- Right button -->
+        <button
+          @click="scrollRight"
+          class="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white/70 backdrop-blur-md w-8 h-8 flex items-center justify-center rounded-full shadow hover:bg-blue-100 transition text-blue-600 font-bold"
+        >
+          ›
+        </button>
+      </div>
+
+      <!-- SKELETON -->
+      <!-- SKELETON -->
+      <div v-if="firstLoad" class="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+        <div v-for="n in 8" :key="`sk-${n}`" class="rounded-2xl p-4">
+          <div class="skeleton h-48 rounded-xl mb-3"></div>
           <div class="skeleton h-3.5 rounded w-3/4 mb-2"></div>
           <div class="skeleton h-3 rounded w-1/2 mb-3"></div>
-          <div class="skeleton h-4 rounded w-1/3"></div>
+          <div class="skeleton h-4 rounded w-1/3 mb-2"></div>
+          <div class="skeleton h-3 rounded w-1/4"></div>
         </div>
       </div>
 
       <!-- ADA DATA -->
-      <div v-else-if="books.length > 0" class="grid grid-cols-2 md:grid-cols-4 gap-6">
+      <div v-else-if="books.length > 0" class="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
         <div
           v-for="book in books"
           :key="book.id"
-          class="group bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer block"
+          class="group bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
           @click="viewBookDetails(book)"
         >
           <div class="overflow-hidden rounded-xl bg-gray-100 mb-4">
@@ -255,7 +331,6 @@ const minPrice = (book) => {
             <template v-else>-</template>
           </p>
 
-          <!-- Badge tipe -->
           <div class="flex gap-1 mt-1.5 flex-wrap">
             <span
               v-if="book.has_print"
@@ -299,45 +374,175 @@ const minPrice = (book) => {
         </div>
       </div>
 
-      <!-- EMPTY STATE -->
-      <div v-else-if="isEmpty" class="flex flex-col items-center justify-center text-center py-24">
-        <div class="absolute w-[300px] h-[300px] bg-blue-400/20 rounded-full blur-3xl"></div>
-        <img
-          :src="logo"
-          alt="empty"
-          class="w-28 h-28 object-contain opacity-80 mb-6 relative z-10"
-        />
-        <h2 class="text-lg font-semibold text-gray-700 relative z-10">Buku tidak ditemukan</h2>
-        <p class="text-gray-400 text-sm mt-2 relative z-10">
-          {{
-            search
-              ? `Tidak ada hasil untuk "${search}"`
-              : 'Saat ini belum ada data buku yang tersedia'
-          }}
-        </p>
-        <button
-          v-if="search"
-          type="button"
-          @click="search = ''"
-          class="mt-6 px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition relative z-10"
-        >
-          Hapus Pencarian
-        </button>
-        <router-link
-          v-else
-          to="/"
-          class="mt-6 px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition relative z-10"
-        >
-          Kembali ke Home
-        </router-link>
-      </div>
+      <!-- ======================== EMPTY STATE ======================== -->
+      <div
+        v-else-if="isEmpty"
+        class="flex flex-col items-center justify-center text-center py-16 sm:py-24 px-4"
+      >
+        <div class="relative mb-6 sm:mb-8">
+          <div class="absolute inset-0 flex items-center justify-center">
+            <div
+              class="w-40 h-40 sm:w-56 sm:h-56 bg-blue-100 rounded-full blur-3xl opacity-60"
+            ></div>
+          </div>
+          <svg
+            class="relative w-36 h-36 sm:w-52 sm:h-52 mx-auto"
+            viewBox="0 0 200 200"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <rect x="45" y="70" width="70" height="90" rx="6" fill="#DBEAFE" />
+            <rect x="45" y="70" width="8" height="90" rx="3" fill="#93C5FD" />
+            <rect
+              x="58"
+              y="55"
+              width="75"
+              height="98"
+              rx="7"
+              fill="#EFF6FF"
+              stroke="#BFDBFE"
+              stroke-width="1.5"
+            />
+            <rect x="58" y="55" width="10" height="98" rx="4" fill="#60A5FA" />
+            <rect x="76" y="75" width="42" height="5" rx="2.5" fill="#BFDBFE" />
+            <rect x="76" y="87" width="34" height="4" rx="2" fill="#DBEAFE" />
+            <rect x="76" y="98" width="38" height="4" rx="2" fill="#DBEAFE" />
+            <rect x="76" y="109" width="28" height="4" rx="2" fill="#DBEAFE" />
+            <circle cx="130" cy="125" r="28" fill="white" stroke="#93C5FD" stroke-width="3" />
+            <circle cx="130" cy="125" r="20" fill="#F0F9FF" />
+            <text
+              x="124"
+              y="132"
+              font-size="20"
+              font-weight="700"
+              fill="#60A5FA"
+              font-family="Arial"
+            >
+              ?
+            </text>
+            <line
+              x1="151"
+              y1="146"
+              x2="164"
+              y2="160"
+              stroke="#93C5FD"
+              stroke-width="5"
+              stroke-linecap="round"
+            />
+            <circle cx="52" cy="52" r="4" fill="#FCD34D" opacity="0.7" />
+            <circle cx="165" cy="75" r="3" fill="#A5B4FC" opacity="0.8" />
+            <circle cx="40" cy="140" r="2.5" fill="#6EE7B7" opacity="0.7" />
+          </svg>
+        </div>
 
-      <!-- Sentinel -->
+        <div class="relative z-10 max-w-sm sm:max-w-md mx-auto">
+          <h2 class="text-lg sm:text-xl font-bold text-gray-700 mb-2">
+            {{ search ? 'Buku Tidak Ditemukan' : 'Belum Ada Buku' }}
+          </h2>
+
+          <div
+            class="flex items-start gap-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-2xl px-4 py-3.5 mt-3 text-left"
+            role="alert"
+          >
+            <svg
+              class="w-5 h-5 mt-0.5 shrink-0 text-blue-500"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v4m0 4h.01" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <div>
+              <p class="text-sm font-semibold leading-snug">
+                {{
+                  search
+                    ? `Tidak ada buku yang cocok dengan "${search}"`
+                    : 'Koleksi buku belum tersedia saat ini'
+                }}
+              </p>
+              <p class="text-xs text-blue-500 mt-1 leading-relaxed">
+                {{
+                  search
+                    ? 'Coba gunakan kata kunci lain atau periksa ejaan pencarian kamu.'
+                    : 'Silakan kunjungi kembali nanti. Koleksi akan segera diperbarui.'
+                }}
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mt-6">
+            <button
+              v-if="search"
+              type="button"
+              @click="search = ''"
+              class="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-full hover:bg-blue-700 active:scale-95 transition-all duration-200 shadow-md shadow-blue-200"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Hapus Pencarian
+            </button>
+
+            <router-link
+              v-else
+              to="/"
+              class="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-full hover:bg-blue-700 active:scale-95 transition-all duration-200 shadow-md shadow-blue-200"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                />
+              </svg>
+              Kembali ke Home
+            </router-link>
+
+            <button
+              type="button"
+              @click="resetAndFetch()"
+              class="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-white text-blue-600 text-sm font-semibold rounded-full border border-blue-200 hover:bg-blue-50 active:scale-95 transition-all duration-200"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Muat Ulang
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- ======================== END EMPTY STATE ======================== -->
+
+      <!-- Sentinel infinite scroll -->
       <div ref="sentinelEl" class="h-4 mt-4"></div>
 
       <!-- End of list -->
       <div
-        v-if="!hasMore && !loading && books.value > 0"
+        v-if="!hasMore && !loading && books.length > 0"
         class="text-center text-gray-400 text-sm py-8"
       >
         ✅ Semua buku sudah ditampilkan
@@ -345,3 +550,48 @@ const minPrice = (book) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Hide scrollbar */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.08) 25%,
+    rgba(59, 130, 246, 0.18) 50%,
+    rgba(59, 130, 246, 0.08) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 0.5rem;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ✅ Animated shine — identik dengan Login */
+@keyframes shine {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+.animate-shine {
+  animation: shine 6s linear infinite;
+}
+</style>

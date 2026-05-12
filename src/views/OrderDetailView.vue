@@ -961,11 +961,12 @@ watch(
                           <button
                             @click="openPdfReader(item)"
                             :disabled="openingReader[item.book_id ?? item.book?.id]"
-                            class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                            class="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
+                            <!-- Loading spinner -->
                             <svg
                               v-if="openingReader[item.book_id ?? item.book?.id]"
-                              class="w-4 h-4 animate-spin"
+                              class="w-4 h-4 animate-spin shrink-0"
                               fill="none"
                               viewBox="0 0 24 24"
                             >
@@ -983,20 +984,39 @@ watch(
                                 d="M4 12a8 8 0 018-8v8z"
                               />
                             </svg>
-                            <span v-else>📖</span>
-                            {{
-                              openingReader[item.book_id ?? item.book?.id] ? 'Membuka...' : 'Baca'
-                            }}
+                            <!-- Icon baca -->
+                            <svg
+                              v-else
+                              class="w-4 h-4 shrink-0"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                              />
+                            </svg>
+                            <!-- Teks: hidden di mobile, muncul di sm ke atas -->
+                            <span class="hidden sm:inline">
+                              {{
+                                openingReader[item.book_id ?? item.book?.id] ? 'Membuka...' : 'Baca'
+                              }}
+                            </span>
                           </button>
+
                           <!-- Download PDF -->
                           <button
                             @click="handleDownload(item)"
                             :disabled="downloadingMap[item.book_id ?? item.book?.id]"
-                            class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-green-600 text-white hover:bg-green-700 transition active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                            class="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-bold bg-green-600 text-white hover:bg-green-700 transition active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
+                            <!-- Loading spinner -->
                             <svg
                               v-if="downloadingMap[item.book_id ?? item.book?.id]"
-                              class="w-4 h-4 animate-spin"
+                              class="w-4 h-4 animate-spin shrink-0"
                               fill="none"
                               viewBox="0 0 24 24"
                             >
@@ -1014,12 +1034,29 @@ watch(
                                 d="M4 12a8 8 0 018-8v8z"
                               />
                             </svg>
-                            <span v-else>⬇️</span>
-                            {{
-                              downloadingMap[item.book_id ?? item.book?.id]
-                                ? 'Menyiapkan...'
-                                : 'Download'
-                            }}
+                            <!-- Icon download -->
+                            <svg
+                              v-else
+                              class="w-4 h-4 shrink-0"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                              />
+                            </svg>
+                            <!-- Teks: hidden di mobile, muncul di sm ke atas -->
+                            <span class="hidden sm:inline">
+                              {{
+                                downloadingMap[item.book_id ?? item.book?.id]
+                                  ? 'Menyiapkan...'
+                                  : 'Download'
+                              }}
+                            </span>
                           </button>
                         </div>
                       </div>
