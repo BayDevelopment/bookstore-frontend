@@ -170,13 +170,89 @@ onMounted(() => fetchCategories())
           </div>
         </div>
 
-        <div class="flex justify-center relative">
-          <div
-            class="absolute w-[200px] h-[200px] sm:w-[250px] sm:h-[250px] bg-blue-400/20 rounded-full blur-3xl"
-          ></div>
-          <AcademicCapIcon
-            class="relative z-10 w-24 h-24 sm:w-32 sm:h-32 md:w-44 md:h-44 text-blue-600"
-          />
+        <div class="flex justify-center relative py-8 md:py-12">
+          <div class="logo-orbit-wrapper">
+            <div class="logo-orbit-glow"></div>
+
+            <div class="logo-orbit-ring logo-orbit-ring-inner"></div>
+            <div class="logo-orbit-ring logo-orbit-ring-outer"></div>
+
+            <!-- SVG SDG mengelilingi logo -->
+            <div class="logo-orbit-track">
+              <!-- SDG 4 -->
+              <div
+                class="logo-orbit-item orbit-sdg-4"
+                style="--angle: -90deg; --angle-reverse: 90deg"
+              >
+                <div class="logo-orbit-counter">
+                  <div class="logo-orbit-badge">
+                    <span class="logo-orbit-number">4</span>
+                    <svg
+                      class="logo-orbit-svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    >
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                      <path d="M2 17l10 5 10-5" />
+                      <path d="M2 12l10 5 10-5" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SDG 10 -->
+              <div
+                class="logo-orbit-item orbit-sdg-10"
+                style="--angle: 30deg; --angle-reverse: -30deg"
+              >
+                <div class="logo-orbit-counter">
+                  <div class="logo-orbit-badge">
+                    <span class="logo-orbit-number">10</span>
+                    <svg
+                      class="logo-orbit-svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 12h8M12 8v8" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SDG 12 -->
+              <div
+                class="logo-orbit-item orbit-sdg-12"
+                style="--angle: 150deg; --angle-reverse: -150deg"
+              >
+                <div class="logo-orbit-counter">
+                  <div class="logo-orbit-badge">
+                    <span class="logo-orbit-number">12</span>
+                    <svg
+                      class="logo-orbit-svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    >
+                      <path
+                        d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"
+                      />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Logo utama -->
+            <div class="logo-main-core">
+              <AcademicCapIcon class="logo-main-icon w-24 h-24 sm:w-32 sm:h-32 md:w-44 md:h-44" />
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -302,20 +378,399 @@ onMounted(() => fetchCategories())
 </template>
 
 <style scoped>
+/* =========================
+   LOGO ORBIT ONLY
+========================= */
+
+.logo-orbit-wrapper {
+  --orbit-size: 280px;
+  --orbit-radius: 118px;
+
+  position: relative;
+  width: var(--orbit-size);
+  height: var(--orbit-size);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: visible;
+}
+
+.logo-orbit-glow {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    rgba(59, 130, 246, 0.35),
+    rgba(14, 165, 233, 0.14),
+    transparent 70%
+  );
+  filter: blur(32px);
+  animation: logoGlowPulse 3.5s ease-in-out infinite;
+}
+
+.logo-orbit-ring {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.logo-orbit-ring-inner {
+  width: 205px;
+  height: 205px;
+  border: 1px dashed rgba(59, 130, 246, 0.35);
+  box-shadow: inset 0 0 28px rgba(59, 130, 246, 0.1);
+  animation: logoRingRotate 22s linear infinite;
+}
+
+.logo-orbit-ring-outer {
+  width: 270px;
+  height: 270px;
+  border: 1px solid rgba(168, 85, 247, 0.22);
+  box-shadow:
+    0 0 35px rgba(59, 130, 246, 0.15),
+    inset 0 0 30px rgba(168, 85, 247, 0.08);
+  animation: logoRingRotateReverse 28s linear infinite;
+}
+
+.logo-orbit-track {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  border-radius: 999px;
+  animation: logoOrbitRotate 16s linear infinite;
+}
+
+.logo-orbit-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 66px;
+  height: 66px;
+  margin-top: -33px;
+  margin-left: -33px;
+  transform: rotate(var(--angle)) translateX(var(--orbit-radius)) rotate(var(--angle-reverse));
+  transform-origin: center;
+}
+
+.logo-orbit-counter {
+  width: 100%;
+  height: 100%;
+  animation: logoOrbitCounter 16s linear infinite;
+}
+
+.logo-orbit-badge {
+  position: relative;
+  width: 66px;
+  height: 66px;
+  border-radius: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background:
+    linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.72)),
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.16), transparent 58%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 18px 45px rgba(0, 0, 0, 0.28),
+    0 0 26px currentColor,
+    inset 0 0 22px rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  animation: logoBadgeFloat 3.2s ease-in-out infinite;
+}
+
+.logo-orbit-number {
+  position: absolute;
+  top: -9px;
+  right: -8px;
+  min-width: 27px;
+  height: 27px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+}
+
+.logo-orbit-svg {
+  width: 34px;
+  height: 34px;
+  color: currentColor;
+  filter: drop-shadow(0 8px 16px currentColor);
+  animation: logoSvgSpin 7s linear infinite;
+}
+
+/* Warna disamakan seperti SVG SDG sebelumnya */
+.orbit-sdg-4 {
+  color: #38bdf8;
+}
+
+.orbit-sdg-10 {
+  color: #a78bfa;
+}
+
+.orbit-sdg-12 {
+  color: #34d399;
+}
+
+.logo-main-core {
+  position: relative;
+  z-index: 5;
+  width: 150px;
+  height: 150px;
+  border-radius: 999px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.22), rgba(59, 130, 246, 0.08)),
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.22), transparent 60%);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  box-shadow:
+    0 25px 70px rgba(37, 99, 235, 0.24),
+    inset 0 0 35px rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  animation: logoMainFloat 4s ease-in-out infinite;
+}
+
+.logo-main-icon {
+  color: #2563eb;
+  filter: drop-shadow(0 15px 25px rgba(37, 99, 235, 0.45));
+}
+
+/* =========================
+   ANIMATION
+========================= */
+
+@keyframes logoOrbitRotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes logoOrbitCounter {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes logoSvgSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes logoRingRotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes logoRingRotateReverse {
+  from {
+    transform: rotate(360deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes logoMainFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+@keyframes logoBadgeFloat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-6px) scale(1.04);
+  }
+}
+
+@keyframes logoGlowPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+/* =========================
+   RESPONSIVE LOGO ONLY
+========================= */
+
+@media (min-width: 640px) {
+  .logo-orbit-wrapper {
+    --orbit-size: 330px;
+    --orbit-radius: 140px;
+  }
+
+  .logo-orbit-ring-inner {
+    width: 245px;
+    height: 245px;
+  }
+
+  .logo-orbit-ring-outer {
+    width: 320px;
+    height: 320px;
+  }
+
+  .logo-main-core {
+    width: 180px;
+    height: 180px;
+  }
+
+  .logo-orbit-item,
+  .logo-orbit-badge {
+    width: 70px;
+    height: 70px;
+  }
+
+  .logo-orbit-item {
+    margin-top: -35px;
+    margin-left: -35px;
+  }
+
+  .logo-orbit-svg {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .logo-orbit-wrapper {
+    --orbit-size: 400px;
+    --orbit-radius: 170px;
+  }
+
+  .logo-orbit-ring-inner {
+    width: 300px;
+    height: 300px;
+  }
+
+  .logo-orbit-ring-outer {
+    width: 390px;
+    height: 390px;
+  }
+
+  .logo-main-core {
+    width: 220px;
+    height: 220px;
+  }
+
+  .logo-orbit-item,
+  .logo-orbit-badge {
+    width: 76px;
+    height: 76px;
+  }
+
+  .logo-orbit-item {
+    margin-top: -38px;
+    margin-left: -38px;
+  }
+
+  .logo-orbit-badge {
+    border-radius: 24px;
+  }
+
+  .logo-orbit-svg {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-orbit-glow,
+  .logo-orbit-ring,
+  .logo-orbit-track,
+  .logo-orbit-counter,
+  .logo-orbit-badge,
+  .logo-orbit-svg,
+  .logo-main-core {
+    animation: none;
+  }
+}
+/* ════════════════════════════════════════
+   SDG SECTION
+════════════════════════════════════════ */
 /* ════════════════════════════════════════
    SDG SECTION
 ════════════════════════════════════════ */
 .sdg-wrapper {
+  position: relative;
   margin: 1.25rem 0 1.75rem;
+  padding: 1rem;
+  border-radius: 22px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(186, 230, 253, 0.34), transparent 36%),
+    radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.16), transparent 42%),
+    linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(219, 234, 254, 0.82));
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  box-shadow:
+    0 18px 45px rgba(37, 99, 235, 0.1),
+    inset 0 0 30px rgba(255, 255, 255, 0.45);
+}
+
+.sdg-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(59, 130, 246, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.055) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 .sdg-label {
+  position: relative;
+  z-index: 2;
   font-size: 0.62rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #94a3b8;
-  margin-bottom: 0.6rem;
+  color: #64748b;
+  margin-bottom: 0.75rem;
   text-align: center;
 }
 
@@ -326,16 +781,18 @@ onMounted(() => fetchCategories())
 }
 
 .sdg-cards {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
 @media (min-width: 480px) {
   .sdg-cards {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 0.45rem;
+    gap: 0.55rem;
   }
 }
 
@@ -343,100 +800,91 @@ onMounted(() => fetchCategories())
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.8rem 0.55rem 0.55rem;
-  border-radius: 14px;
-  border: 1px solid transparent;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem 0.65rem 0.65rem;
+  border-radius: 16px;
+  border: 1px solid rgba(186, 230, 253, 0.45);
   overflow: hidden;
   cursor: default;
   transition:
     transform 0.25s ease,
-    box-shadow 0.25s ease;
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
   flex: 1 1 auto;
   min-width: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(239, 246, 255, 0.48)),
+    radial-gradient(circle at top left, rgba(186, 230, 253, 0.24), transparent 55%);
+  box-shadow:
+    0 10px 28px rgba(37, 99, 235, 0.08),
+    inset 0 0 22px rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
 }
 
 .sdg-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.12);
-}
-
-/* SDG 4 — Merah (warna resmi PBB) */
-.sdg-4 {
-  background: linear-gradient(135deg, #fff7f0 0%, #fff1e6 100%);
-  border-color: #fcd9b8;
-}
-.sdg-4 .sdg-icon-wrap {
-  background: #c5192d;
-}
-.sdg-4 .sdg-number {
-  color: #fff;
-}
-.sdg-4 .sdg-icon {
-  color: rgba(255, 255, 255, 0.75);
-}
-.sdg-4 .sdg-title {
-  color: #9a1222;
-}
-.sdg-4 .sdg-desc {
-  color: #b45c30;
-}
-.sdg-4 .sdg-glow {
-  background: radial-gradient(circle at 0% 50%, rgba(197, 25, 45, 0.08), transparent 70%);
-}
-
-/* SDG 10 — Magenta */
-.sdg-10 {
-  background: linear-gradient(135deg, #fdf0f8 0%, #fce8f5 100%);
-  border-color: #f0b8e0;
-}
-.sdg-10 .sdg-icon-wrap {
-  background: #dd1367;
-}
-.sdg-10 .sdg-number {
-  color: #fff;
-}
-.sdg-10 .sdg-icon {
-  color: rgba(255, 255, 255, 0.75);
-}
-.sdg-10 .sdg-title {
-  color: #8b0d42;
-}
-.sdg-10 .sdg-desc {
-  color: #a83870;
-}
-.sdg-10 .sdg-glow {
-  background: radial-gradient(circle at 0% 50%, rgba(221, 19, 103, 0.08), transparent 70%);
-}
-
-/* SDG 12 — Emas */
-.sdg-12 {
-  background: linear-gradient(135deg, #fdfbf0 0%, #fdf6e3 100%);
-  border-color: #f0dfa0;
-}
-.sdg-12 .sdg-icon-wrap {
-  background: #bf8b2e;
-}
-.sdg-12 .sdg-number {
-  color: #fff;
-}
-.sdg-12 .sdg-icon {
-  color: rgba(255, 255, 255, 0.75);
-}
-.sdg-12 .sdg-title {
-  color: #7a5a1a;
-}
-.sdg-12 .sdg-desc {
-  color: #967535;
-}
-.sdg-12 .sdg-glow {
-  background: radial-gradient(circle at 0% 50%, rgba(191, 139, 46, 0.1), transparent 70%);
+  transform: translateY(-3px);
+  border-color: rgba(125, 211, 252, 0.8);
+  box-shadow:
+    0 16px 38px rgba(14, 165, 233, 0.16),
+    inset 0 0 26px rgba(255, 255, 255, 0.7);
 }
 
 .sdg-glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  background: radial-gradient(circle at 0% 50%, rgba(186, 230, 253, 0.16), transparent 70%);
+}
+
+/* Semua card dibuat satu nuansa: biru muda pudar */
+.sdg-4,
+.sdg-10,
+.sdg-12 {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(219, 234, 254, 0.52)),
+    radial-gradient(circle at top left, rgba(186, 230, 253, 0.28), transparent 56%);
+  border-color: rgba(147, 197, 253, 0.42);
+}
+
+.sdg-4 .sdg-icon-wrap,
+.sdg-10 .sdg-icon-wrap,
+.sdg-12 .sdg-icon-wrap {
+  background:
+    linear-gradient(145deg, rgba(219, 234, 254, 0.78), rgba(125, 211, 252, 0.24)),
+    rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(186, 230, 253, 0.55);
+  box-shadow:
+    0 8px 22px rgba(14, 165, 233, 0.12),
+    inset 0 0 18px rgba(255, 255, 255, 0.75);
+}
+
+/* Nomor SDG */
+.sdg-4 .sdg-number,
+.sdg-10 .sdg-number,
+.sdg-12 .sdg-number {
+  color: #1e40af;
+}
+
+/* SVG icon warna biru muda pudar / putih */
+.sdg-4 .sdg-icon,
+.sdg-10 .sdg-icon,
+.sdg-12 .sdg-icon {
+  color: rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 0 7px rgba(125, 211, 252, 0.7))
+    drop-shadow(0 6px 12px rgba(59, 130, 246, 0.2));
+}
+
+/* Text dibuat tetap readable */
+.sdg-4 .sdg-title,
+.sdg-10 .sdg-title,
+.sdg-12 .sdg-title {
+  color: #1e3a8a;
+}
+
+.sdg-4 .sdg-desc,
+.sdg-10 .sdg-desc,
+.sdg-12 .sdg-desc {
+  color: #64748b;
 }
 
 .sdg-icon-wrap {
@@ -444,7 +892,7 @@ onMounted(() => fetchCategories())
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -462,7 +910,7 @@ onMounted(() => fetchCategories())
   top: 3px;
   left: 5px;
   font-size: 0.52rem;
-  font-weight: 800;
+  font-weight: 900;
   line-height: 1;
 }
 
@@ -481,7 +929,7 @@ onMounted(() => fetchCategories())
 
 .sdg-title {
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.2;
 }
 
@@ -489,13 +937,14 @@ onMounted(() => fetchCategories())
   font-size: 0.58rem;
   font-weight: 500;
   line-height: 1.3;
-  opacity: 0.85;
+  opacity: 0.88;
 }
 
 @media (min-width: 640px) {
   .sdg-title {
     font-size: 0.73rem;
   }
+
   .sdg-desc {
     font-size: 0.61rem;
   }
@@ -505,11 +954,11 @@ onMounted(() => fetchCategories())
   .sdg-title {
     font-size: 0.76rem;
   }
+
   .sdg-desc {
     font-size: 0.63rem;
   }
 }
-
 /* ════════════════════════════════════════
    EXISTING STYLES (tidak diubah)
 ════════════════════════════════════════ */
