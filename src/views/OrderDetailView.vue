@@ -4,36 +4,31 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '@/lib/axios'
 import DOMPurify from 'dompurify'
 
-function scrollToUpload() {
-  document.getElementById('upload-section')?.scrollIntoView({ behavior: 'smooth' })
-}
-
 const route = useRoute()
 const router = useRouter()
 
-// ── STATE ──
+// ── STATE ────────────────────────────────────────────────────────────────────
 const order = ref(null)
 const loading = ref(true)
 const error = ref(null)
+const uploadSuccess = ref(false)
+const uploadError = ref(null)
+const uploading = ref(false)
+const copied = ref(false)
 
 const fileInput = ref(null)
 const selectedFile = ref(null)
 const previewUrl = ref(null)
-const uploading = ref(false)
-const uploadError = ref(null)
-const uploadSuccess = ref(false)
-const copied = ref(false)
 
-// ── STATE DOWNLOAD ──
-// Menyimpan loading state per book_id agar tidak semua tombol spinner bareng
 const downloadingMap = ref({})
+const openingReader = ref({})
 
-// ── CONSTANTS ──
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const token = localStorage.getItem('token')
 const STORAGE_URL = import.meta.env.VITE_STORAGE_URL || '/storage'
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
-// ── COMPUTED ──
+// ── COMPUTED ──────────────────────────────────────────────────────────────────
 const proofStatus = computed(() => order.value?.proof_status ?? 'not_uploaded')
 const orderStatus = computed(() => order.value?.status ?? 'pending')
 
@@ -42,6 +37,7 @@ const isUploaded = computed(() => proofStatus.value === 'uploaded')
 const isVerified = computed(() => proofStatus.value === 'verified')
 const isInvalid = computed(() => proofStatus.value === 'invalid')
 const isCash = computed(() => order.value?.payment_method?.code === 'cash')
+const needsUpload = computed(() => !isCash.value && isNotUploaded.value)
 
 const currentStep = computed(() => {
   if (isVerified.value) return 3
@@ -51,8 +47,6 @@ const currentStep = computed(() => {
 
 const pdfItems = computed(() => order.value?.items?.filter((i) => i.type === 'pdf') ?? [])
 const printItems = computed(() => order.value?.items?.filter((i) => i.type === 'print') ?? [])
-
-const needsUpload = computed(() => !isCash.value && isNotUploaded.value)
 
 const orderStatusInfo = computed(() => {
   const map = {
@@ -91,7 +85,7 @@ const proofStatusInfo = computed(() => {
   )
 })
 
-// ── HELPERS ──
+// ── HELPERS ───────────────────────────────────────────────────────────────────
 const sanitize = (html) => (!html ? '' : DOMPurify.sanitize(html))
 const formatPrice = (price) => 'Rp ' + Number(price ?? 0).toLocaleString('id-ID')
 const formatDate = (d) => {
@@ -114,87 +108,11 @@ const getProofSrc = (proof) => {
 }
 const getItemSubtotal = (item) => Number(item.price ?? 0) * Number(item.qty ?? 1)
 
-// ── DOWNLOAD (AMAN) ──────────────────────────────────────────────────────────
-//
-// Alur:
-//   1. GET /orders/{order}/download-link/{book}
-//      → axios otomatis attach Bearer token dari interceptor
-//      → backend cek: login? milik user ini? status confirmed? pdf ada di order?
-//   2. Dapat { url: "https://api.../download?signature=...&uid=xxx&expires=..." }
-//   3. window.location.href = url → browser download PDF langsung
-//
-// Kenapa TIDAK pakai axios responseType blob di sini?
-//   Karena download route sudah menghasilkan file stream dari Storage::download()
-//   — lebih efisien dibuka langsung oleh browser dari signed URL yang sudah
-//   diikat ke uid user. Signed URL expire 5 menit (lihat DownloadController).
-//
-async function handleDownload(item) {
-  const bookId = item.book_id ?? item.book?.id
-  if (!bookId) return
-
-  // Cegah double klik
-  if (downloadingMap.value[bookId]) return
-  downloadingMap.value[bookId] = true
-
-  try {
-    // Step 1: Minta signed URL dari backend (butuh Bearer token via axios)
-    const { data } = await api.get(`/orders/${order.value.id}/download-link/${bookId}`)
-    const signedUrl = data?.url
-
-    if (!signedUrl) throw new Error('URL tidak tersedia.')
-
-    // Step 2: Buka signed URL → browser otomatis download PDF
-    // Signed URL sudah mengandung signature + uid + expires dari Laravel
-    window.location.href = signedUrl
-  } catch (err) {
-    const status = err.response?.status
-    const msg = err.response?.data?.message
-
-    if (status === 401) {
-      // Belum login — arahkan ke login
-      router.push({ path: '/login', query: { redirect: route.fullPath } })
-      return
-    }
-
-    if (status === 403) {
-      // Akses ditolak — tampilkan pesan dari backend
-      alert(`⛔ Akses Ditolak\n\n${msg || 'Kamu tidak memiliki akses ke file ini.'}`)
-      return
-    }
-
-    if (status === 404) {
-      alert(`📭 File Tidak Ditemukan\n\n${msg || 'File PDF belum tersedia. Hubungi admin.'}`)
-      return
-    }
-
-    alert(`❌ Gagal mengunduh\n\n${msg || 'Terjadi kesalahan. Coba beberapa saat lagi.'}`)
-  } finally {
-    // Delay sedikit agar tombol tidak langsung aktif kembali
-    setTimeout(() => {
-      downloadingMap.value[bookId] = false
-    }, 2000)
-  }
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── ACTIONS ──
-async function copyNorek() {
-  const norek = order.value?.payment_method?.account_number
-  if (!norek) return
-  try {
-    await navigator.clipboard.writeText(norek)
-  } catch {
-    const el = document.createElement('textarea')
-    el.value = norek
-    document.body.appendChild(el)
-    el.select()
-    document.execCommand('copy')
-    document.body.removeChild(el)
-  }
-  copied.value = true
-  setTimeout(() => (copied.value = false), 2000)
+function scrollToUpload() {
+  document.getElementById('upload-section')?.scrollIntoView({ behavior: 'smooth' })
 }
 
+// ── FETCH ORDER ───────────────────────────────────────────────────────────────
 async function fetchOrder(retries = 3) {
   loading.value = true
   error.value = null
@@ -215,6 +133,11 @@ async function fetchOrder(retries = 3) {
   loading.value = false
 }
 
+// ── FILE UPLOAD ───────────────────────────────────────────────────────────────
+function triggerFilePicker() {
+  fileInput.value?.click()
+}
+
 function onFileChange(e) {
   const file = e.target.files[0]
   if (!file) return
@@ -227,10 +150,6 @@ function onFileChange(e) {
   selectedFile.value = file
   previewUrl.value = URL.createObjectURL(file)
   uploadError.value = null
-}
-
-function triggerFilePicker() {
-  fileInput.value?.click()
 }
 
 function removeFile() {
@@ -263,11 +182,73 @@ async function uploadBukti() {
   }
 }
 
+// ── COPY NOREK ────────────────────────────────────────────────────────────────
+async function copyNorek() {
+  const norek = order.value?.payment_method?.account_number
+  if (!norek) return
+  try {
+    await navigator.clipboard.writeText(norek)
+  } catch {
+    const el = document.createElement('textarea')
+    el.value = norek
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+  }
+  copied.value = true
+  setTimeout(() => (copied.value = false), 2000)
+}
+
+// ── PDF: BACA (reader) ────────────────────────────────────────────────────────
+function openPdfReader(item) {
+  const bookId = item.book_id ?? item.book?.id
+  if (!bookId || openingReader.value[bookId]) return
+  openingReader.value[bookId] = true
+  router.push({ name: 'pdf-reader', params: { orderId: order.value.id, bookId } })
+  setTimeout(() => {
+    openingReader.value[bookId] = false
+  }, 1500)
+}
+
+// ── PDF: DOWNLOAD (signed URL) ────────────────────────────────────────────────
+async function handleDownload(item) {
+  const bookId = item.book_id ?? item.book?.id
+  if (!bookId || downloadingMap.value[bookId]) return
+  downloadingMap.value[bookId] = true
+  try {
+    const { data } = await api.get(`/orders/${order.value.id}/download-link/${bookId}`)
+    const signedUrl = data?.url
+    if (!signedUrl) throw new Error('URL tidak tersedia.')
+    window.location.href = signedUrl
+  } catch (err) {
+    const status = err.response?.status
+    const msg = err.response?.data?.message
+    if (status === 401) {
+      router.push({ path: '/login', query: { redirect: route.fullPath } })
+      return
+    }
+    const messages = {
+      403: `⛔ Akses Ditolak\n\n${msg || 'Kamu tidak memiliki akses ke file ini.'}`,
+      404: `📭 File Tidak Ditemukan\n\n${msg || 'File PDF belum tersedia. Hubungi admin.'}`,
+    }
+    alert(
+      messages[status] ??
+        `❌ Gagal mengunduh\n\n${msg || 'Terjadi kesalahan. Coba beberapa saat lagi.'}`,
+    )
+  } finally {
+    setTimeout(() => {
+      downloadingMap.value[bookId] = false
+    }, 2000)
+  }
+}
+
+// ── PRINT ─────────────────────────────────────────────────────────────────────
 function printInvoice() {
   window.print()
 }
 
-// ── LIFECYCLE ──
+// ── LIFECYCLE ─────────────────────────────────────────────────────────────────
 onMounted(() => {
   if (!token) {
     router.push('/login')
@@ -284,9 +265,7 @@ watch(
   () => order.value,
   (val) => {
     if (val && route.query.tab === 'upload') {
-      setTimeout(() => {
-        document.getElementById('upload-section')?.scrollIntoView({ behavior: 'smooth' })
-      }, 300)
+      setTimeout(() => scrollToUpload(), 300)
     }
   },
 )
@@ -296,7 +275,7 @@ watch(
   <div class="relative min-h-screen overflow-hidden print:bg-white">
     <div class="absolute inset-0 pointer-events-none grid-bg print:hidden"></div>
 
-    <!-- MODAL: Upload Sukses -->
+    <!-- ── MODAL: Upload Sukses ── -->
     <Transition name="fade">
       <div
         v-if="uploadSuccess"
@@ -339,7 +318,7 @@ watch(
     </Transition>
 
     <div class="relative max-w-2xl mx-auto px-4 sm:px-6 pt-8 pb-16 print:px-0 print:pt-0">
-      <!-- Back -->
+      <!-- ── Back ── -->
       <button
         @click="router.push('/orders')"
         class="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 transition group mb-6 print:hidden"
@@ -356,7 +335,7 @@ watch(
         Kembali ke Pesanan Saya
       </button>
 
-      <!-- Skeleton -->
+      <!-- ── Skeleton ── -->
       <div v-if="loading" class="space-y-4">
         <div class="skeleton h-8 rounded w-1/2 mb-6"></div>
         <div class="bg-white/80 rounded-2xl p-6 space-y-4">
@@ -366,7 +345,7 @@ watch(
         </div>
       </div>
 
-      <!-- Error -->
+      <!-- ── Error ── -->
       <div v-else-if="error" class="flex flex-col items-center py-24 text-center">
         <p class="text-4xl mb-3">⚠️</p>
         <p class="text-gray-600">{{ error }}</p>
@@ -379,7 +358,7 @@ watch(
       </div>
 
       <template v-else-if="order">
-        <!-- Header -->
+        <!-- ── Header ── -->
         <div class="mb-6 flex justify-between items-start print:mb-4">
           <div>
             <h1 class="text-2xl font-bold text-gray-900">Detail Pesanan</h1>
@@ -406,7 +385,7 @@ watch(
           </button>
         </div>
 
-        <!-- STEPPER -->
+        <!-- ── Stepper ── -->
         <div
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 print:shadow-none"
         >
@@ -471,7 +450,7 @@ watch(
           </div>
         </div>
 
-        <!-- BANNER UPLOAD -->
+        <!-- ── Banner Upload ── -->
         <Transition name="slide-fade">
           <div v-if="needsUpload" class="relative mb-4 rounded-2xl overflow-hidden print:hidden">
             <div
@@ -510,7 +489,7 @@ watch(
           </div>
         </Transition>
 
-        <!-- DAFTAR BUKU -->
+        <!-- ── Daftar Buku ── -->
         <div
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 print:shadow-none"
         >
@@ -577,7 +556,7 @@ watch(
           </div>
         </div>
 
-        <!-- RINCIAN PESANAN -->
+        <!-- ── Rincian Pesanan ── -->
         <div
           class="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 print:shadow-none"
         >
@@ -607,19 +586,20 @@ watch(
                   'px-2 py-0.5 rounded-full text-xs font-semibold border',
                   orderStatusInfo.cls,
                 ]"
-                >{{ orderStatusInfo.label }}</span
               >
+                {{ orderStatusInfo.label }}
+              </span>
             </div>
             <div class="flex justify-between text-sm">
               <span class="text-gray-500">Status Bukti</span>
-              <span :class="['text-xs font-semibold', proofStatusInfo.cls]"
-                >{{ proofStatusInfo.icon }} {{ proofStatusInfo.label }}</span
-              >
+              <span :class="['text-xs font-semibold', proofStatusInfo.cls]">
+                {{ proofStatusInfo.icon }} {{ proofStatusInfo.label }}
+              </span>
             </div>
           </div>
         </div>
 
-        <!-- REKENING BANK -->
+        <!-- ── Rekening Bank ── -->
         <div
           v-if="!isCash && isNotUploaded"
           class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 shadow-sm p-5 mb-4 print:hidden"
@@ -667,7 +647,7 @@ watch(
           </div>
         </div>
 
-        <!-- CASH INFO -->
+        <!-- ── Cash Info ── -->
         <div
           v-if="isCash"
           class="bg-green-50 rounded-2xl border border-green-200 shadow-sm p-5 mb-4 print:hidden"
@@ -690,7 +670,7 @@ watch(
           </div>
         </div>
 
-        <!-- UPLOAD SECTION -->
+        <!-- ── Upload Section ── -->
         <div
           v-if="isNotUploaded && !isCash"
           id="upload-section"
@@ -791,7 +771,7 @@ watch(
           </button>
         </div>
 
-        <!-- UPLOADED: Sedang Ditinjau -->
+        <!-- ── Uploaded: Sedang Ditinjau ── -->
         <div
           v-if="isUploaded"
           class="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-4 print:hidden"
@@ -833,7 +813,7 @@ watch(
           </div>
         </div>
 
-        <!-- INVALID: Ditolak Admin -->
+        <!-- ── Invalid: Ditolak Admin ── -->
         <div
           v-if="isInvalid"
           class="bg-red-50 border border-red-200 rounded-2xl p-5 mb-4 shadow-sm print:hidden"
@@ -917,9 +897,7 @@ watch(
           </div>
         </div>
 
-        <!-- ══════════════════════════════════════════════════════════════════ -->
-        <!-- VERIFIED: Pembayaran Diterima                                     -->
-        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <!-- ── Verified: Pembayaran Diterima ── -->
         <div
           v-if="isVerified"
           class="bg-green-50 border border-green-200 rounded-2xl p-5 mb-4 print:hidden"
@@ -957,7 +935,7 @@ watch(
                 </div>
               </div>
 
-              <!-- ✅ PDF Items — Download via handleDownload (AMAN) -->
+              <!-- PDF Items -->
               <div
                 v-if="pdfItems.length > 0"
                 class="bg-white rounded-xl border border-green-200 p-4 mb-4"
@@ -965,60 +943,86 @@ watch(
                 <div class="flex items-start gap-2">
                   <span class="text-lg mt-0.5 shrink-0">📄</span>
                   <div class="flex-1 min-w-0">
-                    <p class="text-sm font-bold text-green-800">Download E-Book PDF</p>
-                    <p class="text-xs text-green-700 mb-3">Buku digitalmu sudah siap didownload:</p>
-                    <div class="space-y-2">
-                      <button
+                    <p class="text-sm font-bold text-green-800 mb-1">E-Book PDF</p>
+                    <p class="text-xs text-green-700 mb-3">
+                      Buku digitalmu sudah siap dibaca atau diunduh:
+                    </p>
+                    <div class="space-y-3">
+                      <div
                         v-for="item in pdfItems"
                         :key="item.id"
-                        @click="handleDownload(item)"
-                        :disabled="downloadingMap[item.book_id ?? item.book?.id]"
-                        class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition active:scale-95 w-full overflow-hidden bg-green-600 text-white hover:bg-green-700 shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+                        class="bg-green-50 rounded-xl border border-green-100 p-3"
                       >
-                        <!-- Spinner saat loading, ikon download saat idle -->
-                        <svg
-                          v-if="downloadingMap[item.book_id ?? item.book?.id]"
-                          class="w-5 h-5 shrink-0 animate-spin"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            class="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            stroke-width="4"
-                          ></circle>
-                          <path
-                            class="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8v8z"
-                          ></path>
-                        </svg>
-                        <svg
-                          v-else
-                          class="w-5 h-5 shrink-0"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                          />
-                        </svg>
-                        <div class="flex-1 min-w-0 overflow-hidden text-left">
-                          <p class="truncate leading-tight">{{ item.book?.title ?? item.title }}</p>
-                          <p class="text-[10px] font-normal opacity-80 truncate">
+                        <p class="text-sm font-bold text-gray-800 truncate mb-2">
+                          {{ item.book?.title }}
+                        </p>
+                        <div class="flex gap-2">
+                          <!-- Baca PDF -->
+                          <button
+                            @click="openPdfReader(item)"
+                            :disabled="openingReader[item.book_id ?? item.book?.id]"
+                            class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <svg
+                              v-if="openingReader[item.book_id ?? item.book?.id]"
+                              class="w-4 h-4 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                class="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                stroke-width="4"
+                              />
+                              <path
+                                class="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8v8z"
+                              />
+                            </svg>
+                            <span v-else>📖</span>
+                            {{
+                              openingReader[item.book_id ?? item.book?.id] ? 'Membuka...' : 'Baca'
+                            }}
+                          </button>
+                          <!-- Download PDF -->
+                          <button
+                            @click="handleDownload(item)"
+                            :disabled="downloadingMap[item.book_id ?? item.book?.id]"
+                            class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-green-600 text-white hover:bg-green-700 transition active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <svg
+                              v-if="downloadingMap[item.book_id ?? item.book?.id]"
+                              class="w-4 h-4 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                class="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                stroke-width="4"
+                              />
+                              <path
+                                class="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8v8z"
+                              />
+                            </svg>
+                            <span v-else>⬇️</span>
                             {{
                               downloadingMap[item.book_id ?? item.book?.id]
-                                ? 'Menyiapkan link...'
-                                : 'Klik untuk download'
+                                ? 'Menyiapkan...'
+                                : 'Download'
                             }}
-                          </p>
+                          </button>
                         </div>
-                      </button>
+                      </div>
                     </div>
                     <p class="text-[10px] text-green-600 mt-3 flex items-center gap-1">
                       <svg
@@ -1030,13 +1034,13 @@ watch(
                       >
                         <path d="M12 9v4m0 4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
                       </svg>
-                      Link aktif selama 5 menit. Download langsung dimulai setelah klik.
+                      PDF dilindungi dan hanya bisa diakses oleh akunmu.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <!-- Bukti proof image -->
+              <!-- Bukti Proof -->
               <div v-if="getProofSrc(order.payment_proof)" class="mt-4">
                 <p class="text-xs font-semibold text-green-700 mb-2">Bukti yang diterima:</p>
                 <a :href="getProofSrc(order.payment_proof)" target="_blank">
@@ -1050,7 +1054,7 @@ watch(
           </div>
         </div>
 
-        <!-- Print footer -->
+        <!-- ── Print Footer ── -->
         <div class="hidden print:block mt-8 pt-8 border-t border-gray-300">
           <p class="text-center text-xs text-gray-500">
             Terima kasih telah berbelanja di Unival Store.<br />
@@ -1090,6 +1094,7 @@ watch(
 .fade-leave-to {
   opacity: 0;
 }
+
 .slide-fade-enter-active {
   transition: all 0.4s ease;
 }
@@ -1101,6 +1106,7 @@ watch(
   opacity: 0;
   transform: translateY(-10px);
 }
+
 .animate-pop {
   animation: pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }

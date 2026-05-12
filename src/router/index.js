@@ -40,8 +40,14 @@ const router = createRouter({
       name: 'verify-email',
       component: () => import('@/views/auth/VerifyEmailView.vue'),
     },
-    { path: '/forgot-password', component: () => import('@/views/auth/ForgotPasswordView.vue') },
-    { path: '/reset-password', component: () => import('@/views/auth/ResetPasswordView.vue') },
+    {
+      path: '/forgot-password',
+      component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    },
+    {
+      path: '/reset-password',
+      component: () => import('@/views/auth/ResetPasswordView.vue'),
+    },
     {
       path: '/dashboard',
       name: 'dashboard',
@@ -65,6 +71,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/reader/:orderId/:bookId',
+      name: 'pdf-reader',
+      component: () => import('@/views/PdfReaderPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/checkout',
       component: () => import('@/views/CheckoutView.vue'),
       meta: { requiresAuth: true },
@@ -82,9 +94,17 @@ router.beforeEach((to) => {
   const user = JSON.parse(localStorage.getItem('user') || 'null')
   const isLoggedIn = !!token && !!user
 
-  if (to.meta.requiresAuth && !isLoggedIn) return { name: 'login' }
-  if (to.meta.requiresAuth && isLoggedIn && !user.email_verified_at) return { name: 'verify-email' }
-  if (to.meta.guestOnly && isLoggedIn) return { name: 'dashboard' }
+  if (to.meta.requiresAuth && !isLoggedIn) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  if (to.meta.requiresAuth && isLoggedIn && !user.email_verified_at) {
+    return { name: 'verify-email' }
+  }
+
+  if (to.meta.guestOnly && isLoggedIn) {
+    return { name: 'dashboard' }
+  }
 })
 
 export default router
